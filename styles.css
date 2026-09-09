@@ -1,33 +1,254 @@
-/* ICOR for Life - Quick Notes Menu
+/* ICOR for Life - Scratchpad
  *
- * Two surfaces and nothing else: the capture box and the hotkey row on
- * the settings page. Every rule sits on the icor-qnm- prefix and every
- * value comes from Obsidian's own variables, which resolve per room under
- * any theme, INKLINE included. The controls themselves (the textarea, the
- * buttons) are the host's and keep the theme's skin: no data-ink-plugin
- * boundary is declared, on purpose. */
+ * Iris's window chrome spec, 2026-09-09. Every value is an Obsidian host
+ * variable: no hex, no pixel literal, no .theme-dark block, no
+ * prefers-color-scheme. Where a number has to be derived it is computed
+ * from a host variable with calc(), never typed. The plugin declares no
+ * data-ink-plugin boundary on purpose, so the member's theme, INKLINE or
+ * not, skins the few controls it draws.
+ *
+ * Every selector is either under body.icor-scr-window (the popout's own
+ * document, so nothing here can reach the main window) or under
+ * .icor-scr-modal (the two suggest modals). */
 
-.icor-qnm-capture {
-  display: flex;
-  flex-direction: column;
-  gap: var(--size-4-3);
+/* ---- the popout's chrome ------------------------------------------- */
+
+/* A tab strip in a one-tab window is chrome for a choice that does not
+   exist; the note's title is the window's title and macOS already draws it;
+   the status bar is replaced by our own count line; the inline title is
+   that same fact a third time. */
+body.icor-scr-window .workspace-tab-header-container,
+body.icor-scr-window .view-header,
+body.icor-scr-window .status-bar,
+body.icor-scr-window .inline-title {
+  display: none;
 }
 
-.icor-qnm-textarea {
-  width: 100%;
-  min-height: calc(var(--line-height-normal) * var(--font-ui-medium) * 4);
-  font-family: var(--font-text);
-  font-size: var(--font-ui-medium);
-  line-height: var(--line-height-normal);
+/* Readable line width is forced off: a popout is already narrow, and a
+   centred column inside a narrow window wastes the surface twice. Higher
+   specificity than Obsidian's own rule, so no !important is needed. */
+body.icor-scr-window .markdown-source-view.is-readable-line-width .cm-sizer,
+body.icor-scr-window .markdown-preview-view.is-readable-line-width .markdown-preview-sizer {
+  max-width: none;
 }
 
-.icor-qnm-buttons {
+/* The top pad is the headroom the first line needs to clear the floating
+   pill, and the bottom band is the reserved space for the count line. The
+   left and right margins stay the host's own --file-margins, which the
+   editor already applies. */
+body.icor-scr-window .view-content {
+  padding-top: var(--size-4-12);
+  padding-bottom: var(--size-4-10);
+}
+
+/* ---- the floating toolbar ------------------------------------------ */
+
+/* A pill's radius is half its own height, computed from the height token:
+   a large magic number is a literal wearing a disguise, and the pill breaks
+   the moment the height changes. */
+body.icor-scr-window .icor-scr-toolbar {
+  position: fixed;
+  top: var(--size-4-2);
+  right: var(--size-4-2);
+  z-index: var(--layer-popover);
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  height: var(--size-4-8);
+  padding-inline: var(--size-2-2);
+  gap: var(--size-2-1);
+  background-color: var(--background-secondary);
+  border: var(--border-width) solid var(--background-modifier-border);
+  border-radius: calc(var(--size-4-8) / 2);
+  box-shadow: var(--shadow-s);
+}
+
+/* Hiding the title bar and the tab header removes both of Obsidian's own
+   drag regions, so the pill is the window's drag handle. The class is named
+   twice to outrank Obsidian's own
+   `body.is-frameless > .app-container ~ *  { -webkit-app-region: no-drag }`
+   by specificity rather than by source order. */
+/* eslint-disable css/no-invalid-properties -- -webkit-app-region is a real
+   Chromium property that the CSS linter's data does not carry; it is the
+   only way to give a frameless window a drag handle. */
+body.icor-scr-window .icor-scr-toolbar.icor-scr-toolbar {
+  -webkit-app-region: drag;
+}
+
+body.icor-scr-window .icor-scr-tool.icor-scr-tool {
+  -webkit-app-region: no-drag;
+}
+/* eslint-enable css/no-invalid-properties */
+
+body.icor-scr-window .icor-scr-tool {
+  width: var(--size-4-6);
+  height: var(--size-4-6);
+  border-radius: calc(var(--size-4-6) / 2);
+  color: var(--text-muted);
+}
+
+body.icor-scr-window .icor-scr-tool:hover {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+body.icor-scr-window .icor-scr-tool:active {
+  background-color: var(--background-modifier-active-hover);
+}
+
+body.icor-scr-window .icor-scr-tool:focus-visible {
+  box-shadow: 0 0 0 var(--size-2-1) var(--background-modifier-border-focus);
+}
+
+/* Always-on-top is signalled by one glyph state and by nothing else: no
+   border change, no window tint, no badge, no toast. This is the window's
+   one marker moment, which is exactly why it is legible at a glance. */
+body.icor-scr-window .icor-scr-tool-on {
+  color: var(--text-accent);
+  background-color: var(--background-modifier-active-hover);
+}
+
+/* ---- the count line ------------------------------------------------ */
+
+/* No ground, no border, no separator rule above it. It renders at zero too,
+   so the line never appears or disappears and nothing under it ever jumps. */
+body.icor-scr-window .icor-scr-footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: var(--size-4-2);
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+body.icor-scr-window .icor-scr-count {
+  color: var(--text-faint);
+  font-family: var(--font-interface);
+  font-size: var(--font-ui-smaller);
+}
+
+/* ---- the two suggest modals ---------------------------------------- */
+
+/* The modal's own chrome stays the host's in every theme. What is added is
+   the row layout, the shortcut chips, the group label and the row actions,
+   and nothing else. */
+.icor-scr-modal .icor-scr-row {
+  display: flex;
+  align-items: center;
   gap: var(--size-4-2);
+  flex-wrap: wrap;
 }
 
-.icor-qnm-chord {
+.icor-scr-modal .icor-scr-row-main {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  flex: 1;
+  min-width: 0;
+}
+
+.icor-scr-modal .icor-scr-row-icon {
+  display: flex;
+  align-items: center;
+  color: var(--text-muted);
+}
+
+.icor-scr-modal .icor-scr-row-text {
+  min-width: 0;
+}
+
+/* One line, ellipsis, never a fade. */
+.icor-scr-modal .icor-scr-row-title {
+  color: var(--text-normal);
+  font-size: var(--font-ui-medium);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.icor-scr-modal .icor-scr-row-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--size-2-1);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+/* The browse modal's one marker moment. */
+.icor-scr-modal .icor-scr-dot {
+  width: var(--size-2-2);
+  height: var(--size-2-2);
+  border-radius: var(--radius-l);
+  background-color: var(--text-accent);
+}
+
+/* The group heading sits inside the first row of its group, above its
+   title, because FuzzySuggestModal has no non-selectable row. */
+.icor-scr-modal .icor-scr-group {
+  flex-basis: 100%;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  padding-bottom: var(--size-2-2);
+}
+
+.icor-scr-modal .icor-scr-keys {
+  display: flex;
+  align-items: center;
+  gap: var(--size-2-1);
+  margin-left: auto;
+}
+
+.icor-scr-modal .icor-scr-key {
+  background-color: var(--background-secondary-alt);
+  color: var(--text-muted);
+  border-radius: var(--radius-s);
+  padding: var(--size-2-1) var(--size-2-2);
+  min-width: var(--size-4-4);
+  font-family: var(--font-interface);
+  font-size: var(--font-ui-smaller);
+  text-align: center;
+}
+
+/* Revealed on hover, on focus-within, AND on the selected row: a
+   hover-only affordance is unreachable from the keyboard, and this modal is
+   driven by the keyboard first. */
+.icor-scr-modal .icor-scr-row-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--size-2-1);
+  margin-left: auto;
+  visibility: hidden;
+}
+
+.icor-scr-modal .icor-scr-row:hover .icor-scr-row-actions,
+.icor-scr-modal .icor-scr-row:focus-within .icor-scr-row-actions,
+.icor-scr-modal .is-selected .icor-scr-row-actions {
+  visibility: visible;
+}
+
+.icor-scr-modal .icor-scr-row-action {
+  color: var(--text-muted);
+}
+
+.icor-scr-modal .icor-scr-row-action:hover {
+  color: var(--text-normal);
+}
+
+.icor-scr-modal .icor-scr-row-action-danger:hover {
+  color: var(--text-error);
+}
+
+/* ---- the undo in the delete notice --------------------------------- */
+
+.icor-scr-undo {
+  color: var(--text-accent);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* ---- the settings page --------------------------------------------- */
+
+.icor-scr-chord {
   display: inline-block;
   min-width: calc(var(--size-4-4) * 8);
   padding: var(--size-2-1) var(--size-4-2);
@@ -40,12 +261,49 @@
   text-align: center;
 }
 
-.icor-qnm-chord-empty {
+.icor-scr-chord-empty {
   color: var(--text-faint);
   font-family: var(--font-interface);
 }
 
-.icor-qnm-recording {
+.icor-scr-recording {
   color: var(--text-accent);
   border-color: var(--text-accent);
+}
+
+.icor-scr-vaults {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-2);
+}
+
+.icor-scr-warn {
+  color: var(--text-warning);
+  font-size: var(--font-ui-small);
+}
+
+.icor-scr-vault-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-1);
+}
+
+.icor-scr-vault-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--size-4-2);
+  font-size: var(--font-ui-small);
+}
+
+.icor-scr-vault-name {
+  color: var(--text-normal);
+}
+
+.icor-scr-vault-mark {
+  color: var(--text-muted);
+}
+
+.icor-scr-vault-note {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
 }
