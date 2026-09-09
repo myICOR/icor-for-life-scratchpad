@@ -209,9 +209,16 @@ export class ScratchpadWindow {
        stopPropagation stops the rest of THIS document; it cannot stop
        Obsidian's Keymap, which already saw a clone of this event from the
        relay on the window. That is why no chord in the table may collide
-       with a core default, and why test/actions.test.mjs holds the list. */
+       with a core default, and why test/actions.test.mjs holds the list.
+
+       The find bar keeps every key it is sent, and so does anything the
+       member is typing into: a palette, a suggestion popup or a menu owns
+       the keyboard while it has focus, and a chord that opened a second
+       modal over the first would be the same defect as swallowing the
+       search's Enter. The check is on the focused element rather than a
+       query over the document, so it costs a walk up a few parents. */
     const onChord = (evt: KeyboardEvent): void => {
-      if (evt.defaultPrevented || inside(evt.target, SEARCH)) return;
+      if (evt.defaultPrevented || inside(evt.target, SEARCH) || inside(evt.target, OVERLAYS)) return;
       const action = matchChord(evt, Platform.isMacOS);
       if (!action) return;
       evt.preventDefault();

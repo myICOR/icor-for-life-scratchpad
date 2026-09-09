@@ -133,7 +133,7 @@ test('the chords are one capture listener matching the table, and no key scope i
   assert.doesNotMatch(src, /pushScope|popScope|new Scope\(/, 'the Scope route is gone, not disabled');
   assert.match(src, /wsWin\.doc\.addEventListener\('keydown', onChord, \{ capture: true \}\)/);
   assert.match(src, /const action = matchChord\(evt, Platform\.isMacOS\)/, 'one table, one matcher');
-  assert.match(src, /if \(evt\.defaultPrevented \|\| inside\(evt\.target, SEARCH\)\) return;/, 'the find bar keeps every key');
+  assert.match(src, /if \(evt\.defaultPrevented \|\| inside\(evt\.target, SEARCH\) \|\| inside\(evt\.target, OVERLAYS\)\) return;/, 'the find bar and any open palette keep every key');
   const chord = src.slice(src.indexOf('const onChord ='));
   assert.match(chord.slice(0, 500), /evt\.preventDefault\(\);\s*evt\.stopPropagation\(\);/);
 });
