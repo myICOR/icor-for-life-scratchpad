@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <!-- ICOR for Life - Quick Notes Menu: macOS menu bar template icon.
+       The note (structure, 1.5) and its marker mark (emphasis, 2.0). Pure black on
+       transparency; macOS recolours a template image from alpha alone.
+       Source of record: GL-003 sections 4.6.1, 4.7, 8.9, 12.4. Rendered by
+       render-menubar-icon.py; do not hand-edit the PNGs. -->
+  <path d="M2.75 6.25 L2.75 1.75 L13.25 1.75 L13.25 14.25 L2.75 14.25 L2.75 6.25" fill="none" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M5.5 6.3 Q8 5.5 10.5 6.2" fill="none" stroke="#000000" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

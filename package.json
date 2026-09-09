@@ -1,0 +1,28 @@
+{
+  "name": "icor-for-life-quick-notes-menu",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ICOR for Life - Quick Notes Menu - a menu bar icon and a global hotkey that capture a line into today's daily note.",
+  "license": "LicenseRef-ICOR-Source-Available-1.0",
+  "type": "module",
+  "scripts": {
+    "build": "node esbuild.config.mjs production",
+    "dev": "node esbuild.config.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src styles.css",
+    "pretest": "node test/build.mjs",
+    "test": "node --test test/*.test.mjs",
+    "gate": "npm run typecheck && npm run build && npm run lint && npm test"
+  },
+  "devDependencies": {
+    "@eslint/css": "^2.0.0",
+    "@types/node": "^24.0.0",
+    "electron": "^43.0.0",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.10.0",
+    "eslint-plugin-obsidianmd": "^0.4.2",
+    "obsidian": "^1.13.1",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.69.0"
+  }
+}

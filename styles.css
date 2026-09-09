@@ -1,0 +1,51 @@
+/* ICOR for Life - Quick Notes Menu
+ *
+ * Two surfaces and nothing else: the capture box and the hotkey row on
+ * the settings page. Every rule sits on the icor-qnm- prefix and every
+ * value comes from Obsidian's own variables, which resolve per room under
+ * any theme, INKLINE included. The controls themselves (the textarea, the
+ * buttons) are the host's and keep the theme's skin: no data-ink-plugin
+ * boundary is declared, on purpose. */
+
+.icor-qnm-capture {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-3);
+}
+
+.icor-qnm-textarea {
+  width: 100%;
+  min-height: calc(var(--line-height-normal) * var(--font-ui-medium) * 4);
+  font-family: var(--font-text);
+  font-size: var(--font-ui-medium);
+  line-height: var(--line-height-normal);
+}
+
+.icor-qnm-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--size-4-2);
+}
+
+.icor-qnm-chord {
+  display: inline-block;
+  min-width: calc(var(--size-4-4) * 8);
+  padding: var(--size-2-1) var(--size-4-2);
+  border-radius: var(--radius-s);
+  border: var(--border-width) solid var(--background-modifier-border);
+  background-color: var(--background-secondary);
+  color: var(--text-normal);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-small);
+  text-align: center;
+}
+
+.icor-qnm-chord-empty {
+  color: var(--text-faint);
+  font-family: var(--font-interface);
+}
+
+.icor-qnm-recording {
+  color: var(--text-accent);
+  border-color: var(--text-accent);
+}
