@@ -5,3 +5,4 @@ export * from '../src/constants';
 export * from '../src/hotkey/accelerator';
 export * from '../src/daily/format';
 export * from '../src/settings/model';
+export * from '../src/electron/trayIconFiles';

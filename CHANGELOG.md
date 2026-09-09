@@ -32,7 +32,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
   guard; both live in the one desktop process, so one vault owns both),
   Show menu bar icon.
 - The menu bar icon, embedded into `main.js` at build time from
-  `assets/`.
+  `assets/`, written into the plugin folder at load as
+  `menubar-iconTemplate.png` (+ `@2x`) and handed to the Tray as a path,
+  so macOS tints it as a template image.
 - A `setStatus(text)` hook on the plugin for a text beside the icon, wired
   to nothing yet.
 

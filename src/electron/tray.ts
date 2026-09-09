@@ -11,7 +11,7 @@
  * released rather than accumulated. The click handlers themselves are the
  * stable functions in `actions`, so a rebuilt menu never captures stale
  * state. */
-import type { Menu, MenuItemConstructorOptions, NativeImage, Tray } from 'electron';
+import type { Menu, MenuItemConstructorOptions, Tray } from 'electron';
 import { PLUGIN_NAME } from '../constants';
 import type { RemoteApi } from './remote';
 
@@ -65,11 +65,15 @@ function swapMenu(remote: RemoteApi, actions: TrayActions, state: TrayState): vo
   menu = next;
 }
 
-/* Creates the tray, or rebuilds its menu when one already exists. `image`
-   is a template NativeImage from trayIcon.ts. */
-export function ensureTray(remote: RemoteApi, image: NativeImage, actions: TrayActions, state: TrayState): void {
+/* Creates the tray, or rebuilds its menu when one already exists.
+   `iconPath` is the absolute path of menubar-iconTemplate.png from
+   trayIcon.ts. It is handed over as a string on purpose: the main process
+   builds the image itself with nativeImage.createFromPath and keeps the
+   template flag the filename asks for. A NativeImage built here would
+   lose that flag at the remote boundary (see trayIcon.ts). */
+export function ensureTray(remote: RemoteApi, iconPath: string, actions: TrayActions, state: TrayState): void {
   if (!tray) {
-    const t = new remote.Tray(image);
+    const t = new remote.Tray(iconPath);
     t.setToolTip(PLUGIN_NAME);
     /* No click handler: a tray with a context menu set opens it on left
        click by itself, and on macOS the click event fires while that

@@ -20,18 +20,23 @@ import { bringWindowForward, getRemote } from './electron/remote';
 import type { RemoteApi } from './electron/remote';
 import { destroyTray, ensureTray, rebuildTrayMenu, setTrayStatus, trayExists } from './electron/tray';
 import type { TrayActions } from './electron/tray';
-import { buildTrayImage } from './electron/trayIcon';
+import { materialiseTrayIcon } from './electron/trayIcon';
 import { DEFAULT_SETTINGS, normaliseSettings } from './settings/model';
 import type { QuickNotesSettings } from './settings/model';
 import { QuickNotesSettingsTab } from './settings/SettingsTab';
 
 const NO_REMOTE = 'The menu bar icon and the global hotkey need the desktop process, which this Obsidian build does not expose. The commands and the obsidian:// door still work.';
+const NO_ICON_PATH = 'The menu bar icon needs a vault on the local file system, so it stays off. The hotkey, the commands and the obsidian:// door still work.';
 
 export default class QuickNotesPlugin extends Plugin {
   override settings: QuickNotesSettings = { ...DEFAULT_SETTINGS };
   private daily!: DailyNote;
   private remote: RemoteApi | null = null;
   private hotkey: GlobalHotkey | null = null;
+  /* Absolute path of menubar-iconTemplate.png in the plugin folder, the
+     Tray's image (a path, so the main process keeps the template flag;
+     see src/electron/trayIcon.ts). Null: no file system to write it to. */
+  private trayIconPath: string | null = null;
   /* The chord last handed to apply(), taken or not, so an unrelated
      settings change does not re-run register and re-show the notice. */
   private appliedChord = '';
@@ -57,6 +62,14 @@ export default class QuickNotesPlugin extends Plugin {
            without onunload. The chord and the tray live in the main process
            and would outlive it, so both are released here as well. */
         this.registerDomEvent(window, 'beforeunload', () => this.releaseMainProcessState());
+        /* Before onLayoutReady, which fires at once when the plugin is
+           enabled into a vault that is already up. */
+        try {
+          this.trayIconPath = await materialiseTrayIcon(this.app, this.manifest);
+        } catch (err) {
+          new Notice(`The menu bar icon could not be written: ${err instanceof Error ? err.message : String(err)}`);
+        }
+        if (!this.trayIconPath && this.settings.showMenuBarIcon) new Notice(NO_ICON_PATH);
       } else if (this.settings.hotkey || this.settings.showMenuBarIcon) {
         new Notice(NO_REMOTE);
       }
@@ -105,7 +118,8 @@ export default class QuickNotesPlugin extends Plugin {
       this.appliedChord = wantedChord;
       this.hotkey.apply(wantedChord, () => this.captureFromOutside());
     }
-    const wantTray = this.settings.ownsMenuBar && this.settings.showMenuBarIcon;
+    const iconPath = this.trayIconPath;
+    const wantTray = this.settings.ownsMenuBar && this.settings.showMenuBarIcon && iconPath !== null;
     if (!wantTray) {
       destroyTray();
       return;
@@ -116,7 +130,7 @@ export default class QuickNotesPlugin extends Plugin {
       return;
     }
     try {
-      ensureTray(remote, buildTrayImage(remote), this.trayActions, state);
+      ensureTray(remote, iconPath, this.trayActions, state);
       setTrayStatus('');
     } catch (err) {
       new Notice(`The menu bar icon could not be created: ${err instanceof Error ? err.message : String(err)}`);

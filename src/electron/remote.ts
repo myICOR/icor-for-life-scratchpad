@@ -10,14 +10,13 @@
  * The surface is typed as the narrow slice this plugin uses, against the
  * `electron` type package, rather than as the whole of @electron/remote:
  * SECURITY.md lists exactly these members. */
-import type { App as ElectronApp, BrowserWindow, GlobalShortcut, Menu, Tray, nativeImage } from 'electron';
+import type { App as ElectronApp, BrowserWindow, GlobalShortcut, Menu, Tray } from 'electron';
 
 export interface RemoteApi {
   readonly globalShortcut: GlobalShortcut;
   readonly app: ElectronApp;
   readonly Tray: typeof Tray;
   readonly Menu: typeof Menu;
-  readonly nativeImage: typeof nativeImage;
   getCurrentWindow(): BrowserWindow;
 }
 

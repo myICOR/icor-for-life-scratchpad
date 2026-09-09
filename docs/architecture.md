@@ -16,7 +16,8 @@ src/hotkey/recorder.ts       the Record hotkey / Clear row (DOM, settings page)
 src/electron/remote.ts       the one door to @electron/remote; bringWindowForward()
 src/electron/globalHotkey.ts GlobalHotkey: apply(chord) / release(), Flint's rules
 src/electron/tray.ts         module-level Tray + Menu; ensure / rebuild / destroy
-src/electron/trayIcon.ts     NativeImage from the two PNGs embedded at build time
+src/electron/trayIcon.ts     writes the embedded PNGs as *Template.png files; returns the path
+src/electron/trayIconFiles.ts pure: the two filenames, data URL decode, byte compare
 src/daily/format.ts          pure: path join, template render, append
 src/daily/dailyNote.ts       DailyNote: ensure(), append() via Vault.process, open()
 src/capture/CaptureModal.ts  the capture box (Modal), one instance at a time
@@ -28,8 +29,11 @@ styles.css                   two surfaces, Obsidian variables only, icor-qnm- pr
 **Renderer to main.** `getRemote()` (remote.ts) is the only place
 `@electron/remote` is obtained: `window.require('@electron/remote')`
 first, `window.electron.remote` second, cached, null when neither
-answers. Every main-process object (the Tray, the Menu, the NativeImage,
-the globalShortcut registration) is created through it. When it is null
+answers. Every main-process object (the Tray, the Menu, the
+globalShortcut registration) is created through it. The Tray's image is
+the one thing NOT built here: remote serializes a NativeImage by value
+and the template flag does not survive, so the Tray gets a path and the
+main process builds the image from it (trayIcon.ts). When it is null
 the plugin still registers its commands, settings tab and protocol
 handler; only the icon and the chord are off, and the settings page says
 so.
@@ -50,13 +54,14 @@ onload
   loadData -> normaliseSettings
   addCommand x2, registerObsidianProtocolHandler, addSettingTab
   getRemote()  -> GlobalHotkey, registerDomEvent(window, 'beforeunload')
+  await materialiseTrayIcon() -> <plugin dir>/menubar-iconTemplate.png (+ @2x), written when missing or changed
   onLayoutReady -> applySettings()
 
 applySettings   (load, and after every settings change)
   chord = ownsMenuBar ? settings.hotkey : ''
   chord changed?           hotkey.apply(chord): unregister(chord); ok = register(chord); Notice if !ok
   tray wanted?             no  -> destroyTray()
-                           yes -> exists? rebuildTrayMenu() : ensureTray(buildTrayImage())
+                           yes -> exists? rebuildTrayMenu() : ensureTray(trayIconPath)
 
 onunload / beforeunload
   hotkey.release(); destroyTray()

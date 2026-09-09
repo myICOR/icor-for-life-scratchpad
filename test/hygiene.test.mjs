@@ -156,7 +156,7 @@ test('the stylesheet: prefixed selectors, Obsidian variables only, no hex, no pi
   }
 });
 
-test('no literal colour anywhere in src; the icon is the embedded PNG', () => {
+test('no literal colour anywhere in src; the icon is the embedded PNG, handed to the Tray as a path', () => {
   for (const f of sources) {
     const text = strip(readFileSync(f, 'utf8'));
     assert.deepEqual([...text.matchAll(/#[0-9a-fA-F]{3,8}\b/g)].map((m) => m[0]), [], rel(f));
@@ -164,8 +164,17 @@ test('no literal colour anywhere in src; the icon is the embedded PNG', () => {
   const icon = strip(read('src/electron/trayIcon.ts'));
   assert.match(icon, /from '\.\.\/\.\.\/assets\/menubar-icon\.png'/);
   assert.match(icon, /from '\.\.\/\.\.\/assets\/menubar-icon@2x\.png'/);
-  assert.doesNotMatch(icon, /canvas|adapter|readBinary/, 'no placeholder drawn, no file read at load');
+  assert.doesNotMatch(icon, /canvas/, 'no placeholder drawn');
   assert.match(read('esbuild.config.mjs'), /loader: \{ '\.png': 'dataurl' \}/);
+  /* The Tray gets a string. @electron/remote serializes a NativeImage by
+     value and drops the template flag on the way to the main process, so
+     no NativeImage is ever built in this renderer. */
+  const tray = strip(read('src/electron/tray.ts'));
+  assert.match(tray, /iconPath: string/, 'ensureTray takes a path');
+  assert.match(tray, /new remote\.Tray\(iconPath\)/, 'the Tray is constructed from the path');
+  for (const f of sources) {
+    assert.doesNotMatch(strip(readFileSync(f, 'utf8')), /setTemplateImage|nativeImage|createEmpty|addRepresentation/, `${rel(f)} builds an image in the renderer`);
+  }
 });
 
 test('the built plugin requires obsidian only and reaches Electron through window.require at runtime', () => {

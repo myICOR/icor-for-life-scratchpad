@@ -45,9 +45,9 @@ Only the most recent release is supported. One branch, no backports.
 **It reaches the Electron main process through one door.**
 `src/electron/remote.ts` tries `window.require('@electron/remote')` and
 then `window.electron.remote`, once each, and caches the result. The
-surface it uses is typed as exactly six members: `globalShortcut`,
-`app` (for `app.focus`), `Tray`, `Menu`, `nativeImage`, and
-`getCurrentWindow` (for `show`, `restore`, `focus`, `isMinimized`).
+surface it uses is typed as exactly five members: `globalShortcut`,
+`app` (for `app.focus`), `Tray`, `Menu`, and `getCurrentWindow` (for
+`show`, `restore`, `focus`, `isMinimized`).
 Nothing else on `remote` is touched. `test/hygiene.test.mjs` refuses
 `app.dock`, `setActivationPolicy`, `setLoginItemSettings`,
 `unregisterAll`, `app.internalPlugins`, `app.commands` and any window
@@ -72,10 +72,17 @@ reference, builds the menu from a fixed four-item template (header,
 Quick note, Open daily note, Settings), and destroys the tray in
 `onunload` and on `beforeunload`. The menu's accelerator is a label only
 (`registerAccelerator: false`). The icon is `assets/menubar-icon.png`
-and its 2x, embedded into `main.js` at build time as data URLs
-(`src/electron/trayIcon.ts`); nothing is read from disk at load.
+and its 2x, embedded into `main.js` at build time as data URLs. At load
+`src/electron/trayIcon.ts` writes them into the plugin's own folder as
+`menubar-iconTemplate.png` and `menubar-iconTemplate@2x.png` (skipped
+when the bytes already match) and hands the Tray the absolute path, so
+the main process builds the image itself and keeps the macOS template
+flag; a `NativeImage` built in the renderer loses that flag when
+`@electron/remote` serializes it by value. No image object is ever
+built on this side.
 
-**It writes to one file.** `src/daily/dailyNote.ts` resolves today's note
+**It writes to one note, and two icon files in its own folder.**
+`src/daily/dailyNote.ts` resolves today's note
 from the plugin's own folder and date-format settings, creates it with
 `Vault.create` when missing, and appends through `Vault.process`, which
 is atomic against other writers. The appended text is your capture (or

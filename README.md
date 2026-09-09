@@ -101,7 +101,9 @@ the active app.
 ## The menu bar icon
 
 The icon is a template image, so macOS tints it for the light and dark
-menu bar. Its menu:
+menu bar. The plugin writes it into its own folder at load as
+`menubar-iconTemplate.png` (plus `@2x`); the `Template` suffix is what
+tells macOS to tint it. Its menu:
 
 - **ICOR for Life - Quick Notes Menu** (a header, not clickable)
 - **Quick note**, with your recorded chord shown beside it
