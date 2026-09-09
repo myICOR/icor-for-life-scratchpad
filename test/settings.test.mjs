@@ -20,7 +20,7 @@ test('the daily-note keys of the old plugin are dropped rather than carried', ()
     ownsMenuBar: true,
     showMenuBarIcon: true,
   });
-  assert.deepEqual(Object.keys(migrated).sort(), ['alwaysOnTop', 'bounds', 'hotkey', 'lastOpened', 'newNoteFormat', 'ownsMenuBar', 'pinned', 'scratchpadFolder', 'showMenuBarIcon', 'subfolderFormat']);
+  assert.deepEqual(Object.keys(migrated).sort(), ['alwaysOnTop', 'bounds', 'browseSort', 'hotkey', 'lastOpened', 'newNoteFormat', 'ownsMenuBar', 'pinned', 'scratchpadFolder', 'showMenuBarIcon', 'subfolderFormat']);
   assert.equal(migrated.hotkey, 'Shift+CommandOrControl+F', 'the chord the member recorded survives the rename');
 });
 
@@ -90,4 +90,15 @@ test('a rename moves the pin and the opened time with the file', () => {
   assert.deepEqual(after.pinned.sort(), ['new.md', 'other.md']);
   assert.deepEqual(after.lastOpened, { 'new.md': 5, 'other.md': 6 });
   assert.deepEqual(before.pinned.sort(), ['old.md', 'other.md'], 'the input is not mutated');
+});
+
+test('the browse sort defaults to Modified and refuses anything that is not one of the two', () => {
+  /* The list has always been ordered by mtime, so a member who never
+     touches the toggle sees exactly what they saw before. */
+  assert.equal(DEFAULT_SETTINGS.browseSort, 'modified');
+  assert.equal(normaliseSettings({}).browseSort, 'modified');
+  assert.equal(normaliseSettings({ browseSort: 'created' }).browseSort, 'created');
+  for (const bad of ['Created', 'ctime', '', 7, null, {}]) {
+    assert.equal(normaliseSettings({ browseSort: bad }).browseSort, 'modified', `${JSON.stringify(bad)} is not a sort`);
+  }
 });

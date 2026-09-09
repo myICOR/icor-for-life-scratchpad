@@ -15,3 +15,10 @@ export const OWNER_RECORD_FILE = 'icor-for-life-scratchpad-owner.json';
    written: the main process rewrites it wholesale from memory on every
    vault open and close (Flint point 13a). */
 export const VAULT_REGISTRY_FILE = 'obsidian.json';
+
+/* The sibling plugin ICOR for Life - Content Tracker, which keeps a recent
+   list of its own. When the member has it, the browse list asks IT for the
+   order so the two plugins never disagree about which note is newest; when
+   they do not, the plugin sorts the folder itself. Nothing is required: the
+   id is a lookup, never a dependency. */
+export const CONTENT_TRACKER_ID = 'icor-for-life-content-tracker';

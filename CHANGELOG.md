@@ -54,10 +54,21 @@ changed, and a stored hotkey is the only setting that carries over.
   chord really does take that command away; the test suite holds the
   1.13.7 default hotkey table so a new chord cannot skip the check.
 - Browse notes: every note under the scratchpad folder, subfolders
-  included, pinned first and then newest change first, each row showing
-  the note's first line, when it was last opened and how long it is, plus
-  pin and delete on hover and on the selected row. Delete uses your
+  included, pinned first and then the rest by **Modified** or by
+  **Created**, switched by the segmented toggle under the search field or
+  by Tab and remembered in `data.json`. Each row shows the note's first
+  line, the moment its own block is ordered by ("Modified 3 minutes ago"
+  for a note, "Opened 4 weeks ago" for a pinned one) and how long it is,
+  plus pin and delete on hover and on the selected row. Delete uses your
   configured Obsidian trash and the notice carries an Undo.
+- The sibling plugin **ICOR for Life - Content Tracker**, when it is
+  installed, is asked for that recent order instead, scoped to the
+  scratchpad folder, so the two plugins never disagree about which note is
+  newest. It is optional: without it the scratchpad sorts its own folder
+  from the file dates, with no extra reading and nothing said to you. The
+  lookup is guarded at every step and silent on every surprise, and the
+  files that come back are filtered through the scratchpad folder before
+  anything is shown.
 - New notes are filed into a dated subfolder and named from the clock,
   both formats settings, defaulting to `YYYY/MM` and the core Unique note
   creator's `YYYYMMDDHHmm`. Missing folders are created. Renaming is
@@ -76,7 +87,8 @@ changed, and a stored hotkey is the only setting that carries over.
 - Settings: the hotkey recorder and its text form, always on top, the
   remembered window position, the scratchpad folder, the subfolder and
   name formats for new notes, the ownership block, and the menu bar icon
-  toggle.
+  toggle. The browse list's sort is remembered too, set from the list
+  itself rather than from this page.
 - The menu bar icon, embedded into `main.js` at build time from
   `assets/`, written into the plugin folder at load as
   `menubar-iconTemplate.png` (plus `@2x`) and handed to the Tray as a

@@ -31,10 +31,10 @@ src/window/newMenu.ts        the plus glyph's dropdown: the three note makers, i
 src/notes/store.ts           the scratchpad folder: list, target folder, the three makers, duplicate, trash
 src/notes/naming.ts          pure: sanitise a name and a path, resolve a collision, the browse preview
 src/notes/daily.ts           pure: the core Daily notes plugin's folder and format -> today's path
-src/notes/meta.ts            pure: the count text, the relative time, the group order
+src/notes/meta.ts            pure: the count text, the relative time, the two sorts, the group order
 src/notes/plain.ts           pure: markdown to the text a reader sees
 src/modals/ActionsModal.ts   the actions palette (FuzzySuggestModal)
-src/modals/BrowseModal.ts    the browse list (FuzzySuggestModal)
+src/modals/BrowseModal.ts    the browse list (FuzzySuggestModal) plus the Modified / Created toggle
 src/modals/rows.ts           the row rendering both modals share
 styles.css                   Obsidian variables only, every selector anchored on the plugin
 ```
@@ -53,6 +53,22 @@ would use, opened untouched when it is there and created empty when it is
 not. The core plugin's folder and format are read from its own settings
 file through `vault.adapter` and `vault.configDir`, never through
 `app.internalPlugins`, which would be a third private surface.
+
+## The optional sibling
+
+The browse list can take its recent order from **ICOR for Life - Content
+Tracker** instead of working it out itself, so two plugins that both rank
+notes by recency never disagree. It is a lookup, never a dependency:
+`app.plugins.getPlugin('icor-for-life-content-tracker')` behind the same
+kind of shape guard as `app.setting` and `app.commands`, its
+`getRecent(mode, limit, { under })` called only when it really is a
+function, its answer refused unless it is an array of `TFile`s that the
+store's own `owns()` accepts, and every failure silent, because a member
+without the sibling is the normal case rather than an error. When it
+answers null the plugin sorts the scratchpad folder itself from
+`TFile.stat`, which is what it has always done. Pinned notes are added
+back on top of the tracker's answer, because that answer carries a limit
+and a pin must not fall off the end of it.
 
 ## The three process boundaries
 

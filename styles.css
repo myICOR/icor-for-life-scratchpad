@@ -252,6 +252,42 @@ body.icor-scr-window .icor-scr-count {
   font-size: var(--font-ui-smaller);
 }
 
+/* The sort toggle, between the search field and the results. Two buttons
+   that read as one control: the group carries the ground and the radius,
+   the buttons carry only their own state, and the selected one takes the
+   host's own selected-row treatment rather than a colour of its own. */
+.icor-scr-modal .icor-scr-sortbar {
+  display: flex;
+  align-items: center;
+  gap: var(--size-2-1);
+  margin: var(--size-2-2) var(--size-4-3);
+  padding: var(--size-2-1);
+  background-color: var(--background-modifier-form-field);
+  border-radius: var(--radius-s);
+  width: fit-content;
+}
+
+/* The unselected buttons take the bar's own ground rather than a
+   transparent one: the stylesheet may only name Obsidian variables, and
+   the same variable IS the see-through look here. */
+.icor-scr-modal .icor-scr-sort {
+  background-color: var(--background-modifier-form-field);
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  padding: var(--size-2-1) var(--size-4-2);
+  border-radius: var(--radius-s);
+}
+
+.icor-scr-modal .icor-scr-sort:hover {
+  color: var(--text-normal);
+}
+
+.icor-scr-modal .icor-scr-sort-on {
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+}
+
 /* The browse modal's one marker moment. */
 .icor-scr-modal .icor-scr-dot {
   width: var(--size-2-2);

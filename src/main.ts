@@ -38,7 +38,7 @@ import {
   ACTION_TOGGLE_WINDOW,
   TOOL_NEW_MENU,
 } from './actions/table';
-import { PLUGIN_ID, PLUGIN_NAME, PROTOCOL_ACTION } from './constants';
+import { CONTENT_TRACKER_ID, PLUGIN_ID, PLUGIN_NAME, PROTOCOL_ACTION } from './constants';
 import { GlobalHotkey } from './electron/globalHotkey';
 import { bringWindowForward, getRemote } from './electron/remote';
 import type { RemoteApi } from './electron/remote';
@@ -47,7 +47,7 @@ import type { TrayActions } from './electron/tray';
 import { materialiseTrayIcon } from './electron/trayIcon';
 import { ActionsModal } from './modals/ActionsModal';
 import { BrowseModal } from './modals/BrowseModal';
-import type { NoteRow } from './notes/meta';
+import type { BrowseSort, NoteRow } from './notes/meta';
 import { previewFromContent } from './notes/naming';
 import { toPlainText } from './notes/plain';
 import { NoteStore } from './notes/store';
@@ -57,6 +57,12 @@ import type { ScratchpadSettings, WindowBounds } from './settings/model';
 import { ScratchpadSettingsTab } from './settings/SettingsTab';
 import { openNewMenu } from './window/newMenu';
 import { ScratchpadWindow } from './window/ScratchpadWindow';
+
+/* How many notes the Content Tracker is asked for. The browse list is a
+   fuzzy-searched picker, not an archive, and the pinned notes are added
+   back on top of whatever comes out, so nothing the member marked can fall
+   off the end of it. */
+const BROWSE_LIMIT = 200;
 
 const NO_REMOTE = 'The scratchpad window, the menu bar icon and the global hotkey need the desktop process, which this build does not expose. The commands still work.';
 const NO_ICON_PATH = 'The menu bar icon needs a vault on the local file system, so it stays off. The window, the hotkey and the commands still work.';
@@ -537,17 +543,23 @@ export default class ScratchpadPlugin extends Plugin {
     await this.showWindow();
     await this.window.whenFocused();
     const rows = await this.browseRows();
-    new BrowseModal(this.app, rows, {
+    new BrowseModal(this.app, rows, this.settings.browseSort, {
       open: (row) => void this.openPath(row.path),
       togglePin: (row) => void this.pinPath(row.path),
       remove: (row) => void this.removePath(row.path),
+      setSort: (sort) => void this.rememberSort(sort),
     }).open();
+  }
+
+  private async rememberSort(sort: BrowseSort): Promise<void> {
+    this.settings = { ...this.settings, browseSort: sort };
+    await this.saveSettings();
   }
 
   private async browseRows(): Promise<NoteRow[]> {
     const current = this.window.file?.path ?? '';
     const rows: NoteRow[] = [];
-    for (const file of this.notes.list()) {
+    for (const file of this.browseFiles()) {
       /* cachedRead is the read that does not fight the editor's own copy. */
       const content = await this.app.vault.cachedRead(file);
       rows.push({
@@ -555,13 +567,61 @@ export default class ScratchpadPlugin extends Plugin {
         title: file.basename,
         characters: content.length,
         lastOpened: this.settings.lastOpened[file.path] ?? null,
+        /* Both stamps come off the file's own stat: no read, no index, and
+           the modal orders by whichever one the toggle names. */
         modified: file.stat.mtime,
+        created: file.stat.ctime,
         preview: previewFromContent(content),
         pinned: this.settings.pinned.includes(file.path),
         current: file.path === current,
       });
     }
     return rows;
+  }
+
+  /* The files the browse list shows. The Content Tracker, when the member
+     has it, is asked first: it keeps a recent list of its own, and two
+     plugins that disagree about which note is newest is the defect this
+     avoids. Its answer is filtered through the store's own `owns()` all the
+     same, so this list can never reach outside the scratchpad folder, and
+     the pinned notes are added back, because the tracker answers with a
+     LIMIT and a pin must not fall off the end of it. Without the tracker,
+     and on any surprise from it, the plugin sorts the folder itself. */
+  private browseFiles(): TFile[] {
+    const recent = this.trackerRecent(this.settings.browseSort, BROWSE_LIMIT);
+    if (!recent) return this.notes.list();
+    const files = new Map<string, TFile>();
+    for (const file of recent) files.set(file.path, file);
+    for (const path of this.settings.pinned) {
+      if (files.has(path)) continue;
+      const file = this.fileAt(path);
+      if (file && this.notes.owns(file)) files.set(path, file);
+    }
+    return [...files.values()];
+  }
+
+  /* The third and last reach past the public API, guarded the same way as
+     the other two and, like them, in this file only. `app.plugins` has no
+     public type, `getPlugin` answers null for a plugin that is not
+     installed or not enabled, and the object it answers with is another
+     plugin's, so every step is checked before anything is called and every
+     failure is silent: a missing sibling is the normal case, not an error
+     the member should read about. */
+  private trackerRecent(sort: BrowseSort, limit: number): TFile[] | null {
+    const plugins = (this.app as unknown as { plugins?: { getPlugin?: (id: string) => unknown } }).plugins;
+    if (!plugins || typeof plugins.getPlugin !== 'function') return null;
+    try {
+      const tracker = plugins.getPlugin(CONTENT_TRACKER_ID) as { getRecent?: unknown } | null;
+      if (!tracker || typeof tracker.getRecent !== 'function') return null;
+      const getRecent = tracker.getRecent as (mode: BrowseSort, limit: number, opts?: { under?: string }) => unknown;
+      const answer = getRecent.call(tracker, sort, limit, { under: this.settings.scratchpadFolder });
+      if (!Array.isArray(answer)) return null;
+      return answer.filter((file): file is TFile => file instanceof TFile && this.notes.owns(file));
+    } catch {
+      /* the sibling threw, changed its shape, or is a different plugin
+         wearing the same id: the plugin sorts the folder itself */
+      return null;
+    }
   }
 
   private fileAt(path: string): TFile | null {

@@ -9,6 +9,8 @@
  * main.ts). The window's own bounds are here too, so the popout comes back
  * where the member left it; Obsidian's workspace.json also holds bounds,
  * but only for a window it restored itself. */
+import { BROWSE_SORTS } from '../notes/meta';
+import type { BrowseSort } from '../notes/meta';
 import { normaliseAccelerator, validateAccelerator } from '../hotkey/accelerator';
 
 export interface WindowBounds {
@@ -44,6 +46,10 @@ export interface ScratchpadSettings {
   pinned: string[];
   /* Vault path to the epoch milliseconds it was last opened. */
   lastOpened: Record<string, number>;
+  /* Which timestamp the browse list's Notes group is ordered by. Set by
+     the toggle in that modal, not by the settings page: it is a view
+     option the member flips while looking at the list. */
+  browseSort: BrowseSort;
 }
 
 /* Iris ruled on the chrome, not on a number of pixels, so this is Flint's
@@ -67,6 +73,8 @@ export const DEFAULT_SETTINGS: ScratchpadSettings = {
   showMenuBarIcon: true,
   pinned: [],
   lastOpened: {},
+  /* The behaviour the list has always had. */
+  browseSort: 'modified',
 };
 
 function bool(v: unknown, fallback: boolean): boolean {
@@ -132,6 +140,7 @@ export function normaliseSettings(raw: unknown): ScratchpadSettings {
     showMenuBarIcon: bool(r.showMenuBarIcon, DEFAULT_SETTINGS.showMenuBarIcon),
     pinned: paths(r.pinned),
     lastOpened: opened(r.lastOpened),
+    browseSort: BROWSE_SORTS.includes(r.browseSort as BrowseSort) ? (r.browseSort as BrowseSort) : DEFAULT_SETTINGS.browseSort,
   };
 }
 

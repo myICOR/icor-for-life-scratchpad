@@ -198,18 +198,27 @@ always closed before a new one opens.
 **It registers fourteen commands**, bare ids, no default hotkeys
 (`test/manifest.test.mjs`), all from one table in `src/actions/table.ts`.
 
-**It stores eight settings.** `data.json` holds the eight keys in
+**It stores eleven settings.** `data.json` holds the eleven keys in
 `src/settings/model.ts`, normalised on every read: the chord, the folder,
-the always-on-top flag, the window rectangle, the two menu bar toggles,
-the list of pinned note paths and the map of last-opened times. No note
-text is ever written there.
+the two date formats for new notes, the always-on-top flag, the window
+rectangle, the two menu bar toggles, the browse list's sort, the list of
+pinned note paths and the map of last-opened times. No note text is ever
+written there.
 
-**It reaches two private fields of the app.** `app.setting` (the settings
-modal) and `app.commands` (to run Obsidian's own editor search behind the
-"Find in note" row). Neither has a public type, so each is read through a
-shape guard in `src/main.ts` and degrades to a notice when the shape
-changes. `test/hygiene.test.mjs` pins that these are the only two, and
-that they are in that one file.
+**It reaches three private fields of the app.** `app.setting` (the
+settings modal), `app.commands` (to run Obsidian's own editor search
+behind the "Find in note" row) and `app.plugins` (to ask the optional
+sibling plugin ICOR for Life - Content Tracker for its recent-notes
+order, so the two agree). None has a public type, so each is read through
+a shape guard in `src/main.ts`. The first two degrade to a notice when
+the shape changes; the third degrades in silence, because a member who
+does not have the sibling is the normal case: every step is checked
+before anything is called, its answer is refused unless it is a list of
+real files inside the scratchpad folder, and any throw means the plugin
+sorts the folder itself. Nothing is sent to that plugin but the sort
+mode, a count and the scratchpad folder's own path.
+`test/hygiene.test.mjs` pins that these are the only three, and that they
+are in that one file.
 
 **It makes no network connection.** No `fetch`, `requestUrl`,
 `XMLHttpRequest` or `WebSocket` anywhere in `src/`; the same test pins

@@ -152,11 +152,21 @@ behind your back.
 
 **Browse notes** lists every note under the folder, including the ones in
 the dated subfolders. Pinned notes come first, in the order you opened
-them; the rest come newest change first. Each row shows the note's first
-line, when you last opened it and how long it is, so a note named after a
+them. The rest are sorted by **Modified** or by **Created**, whichever
+the toggle under the search field says; Tab flips it, and your choice is
+remembered. Each row shows the note's first line, the moment its own
+block is ordered by ("Modified 3 minutes ago" for a note, "Opened 4 weeks
+ago" for a pinned one) and how long it is, so a note named after a
 timestamp is still recognisable. Hover a row, or select it with the arrow
 keys, and you get pin and delete. Delete goes to your configured trash
 and the notice carries an Undo.
+
+If you also have **ICOR for Life - Content Tracker** installed, the
+browse list asks that plugin for the recent order instead of working it
+out itself, so the two never disagree about which note is newest. It is
+not required and nothing tells you when it is missing: without it the
+scratchpad sorts its own folder, from the file dates, with no extra
+reading.
 
 ## The actions palette
 

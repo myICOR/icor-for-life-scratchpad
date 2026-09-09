@@ -38,6 +38,12 @@ const rel = (f) => f.slice(repo.length + 1);
    is a Vex gate (Vex M-6, 2026-09-09). */
 const NODE_ALLOWED = new Set(['src/electron/ownerRecord.ts', 'src/electron/vaultRegistry.ts']);
 
+/* The three reaches past the public API live in main.ts and nowhere else:
+   app.setting, app.commands and app.plugins. Same shape as the Node
+   allowlist above and for the same reason: a ban that has to be relaxed
+   becomes a named exception, never a deleted line (Vex M-6). */
+const PRIVATE_API_ALLOWED = new Set(['src/main.ts']);
+
 test('no em dash or en dash anywhere in the repo text', () => {
   const hits = [];
   for (const f of textFiles) {
@@ -131,7 +137,13 @@ test('protocol text is plain text: no innerHTML, no outerHTML, no insertAdjacent
 test('the plugin touches no private surface and no global it should not', () => {
   const banned = [
     [/vault\.config\b/, 'app.vault.config'],
-    [/app\.plugins\b/, 'app.plugins'],
+    /* Written as the property name rather than as `app.plugins`, because
+       the reach is spelled through a cast (`(this.app as unknown as
+       { plugins?: ... }).plugins`) and a regex looking for the literal
+       `app.plugins` would never have fired on it. A guard whose passing
+       state is reachable without the property being true is worse than no
+       guard. */
+    [/app\.plugins\b|\}\)\.plugins\b|plugins\?:|getPlugin/, 'app.plugins'],
     [/\bprocess\./, 'Node process'],
     [/\bdocument\./, 'the global document'],
     [/(^|[^.\w])set(Timeout|Interval)\(/m, 'a bare timer (use window.setTimeout)'],
@@ -148,6 +160,7 @@ test('the plugin touches no private surface and no global it should not', () => 
     const text = strip(readFileSync(f, 'utf8'));
     for (const [re, what] of banned) {
       if (NODE_ALLOWED.has(rel(f)) && (what === 'a Node module' || what.startsWith('a hardcoded config path'))) continue;
+      if (PRIVATE_API_ALLOWED.has(rel(f)) && what === 'app.plugins') continue;
       assert.doesNotMatch(text, re, `${rel(f)} uses ${what}`);
     }
   }
@@ -168,16 +181,24 @@ test('the Node allowlist names files that exist, and only those two ever reach f
   assert.doesNotMatch(owner.replace(/import type[^\n]*\n/g, ''), /^import .*from '(node:)?fs'/m, 'no value import of fs');
 });
 
-test('the two reaches past the public API are app.setting and app.commands, both guarded, both in main.ts', () => {
+test('the three reaches past the public API are app.setting, app.commands and app.plugins, all guarded, all in main.ts', () => {
   for (const f of sources) {
     const text = strip(readFileSync(f, 'utf8'));
-    if (f.endsWith('/main.ts')) {
+    if (PRIVATE_API_ALLOWED.has(rel(f))) {
       assert.match(text, /typeof setting\.open === 'function' && typeof setting\.openTabById === 'function'/);
       assert.match(text, /typeof commands\.executeCommandById === 'function'/);
       assert.match(text, /new Notice\('This action needs a command this build does not have\.'\)/, 'a changed shape degrades to a notice');
+      /* The sibling plugin lookup: every step checked before anything is
+         called, and every failure silent, because a member without the
+         Content Tracker is the normal case rather than an error. */
+      assert.match(text, /typeof plugins\.getPlugin !== 'function'\) return null/);
+      assert.match(text, /typeof tracker\.getRecent !== 'function'\) return null/);
+      assert.match(text, /if \(!Array\.isArray\(answer\)\) return null/, 'another plugin\'s answer is never trusted to be a list');
+      assert.match(text, /file instanceof TFile && this\.notes\.owns\(file\)/, "and never to be inside the member's scratchpad folder");
+      assert.doesNotMatch(text, /getRecent[\s\S]{0,200}new Notice/, 'a missing sibling is not something the member should read about');
       continue;
     }
-    assert.doesNotMatch(text, /openTabById|\.setting\b|executeCommandById/, rel(f));
+    assert.doesNotMatch(text, /openTabById|\.setting\b|executeCommandById|getPlugin/, rel(f));
   }
 });
 
