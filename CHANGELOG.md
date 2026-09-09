@@ -14,17 +14,18 @@ changed, and a stored hotkey is the only setting that carries over.
 
 ### Added
 - A floating scratchpad window: a real Obsidian popout on a real markdown
-  leaf, with the tab strip, the title row, the status bar and the inline
-  title hidden inside that window only, and readable line width off.
-  Other editing plugins work in it.
+  leaf, with the tab strip, the view header and the inline title hidden
+  inside that window only, and readable line width off. Other editing
+  plugins work in it.
 - A global hotkey you record yourself (no default; nothing is registered
   until you pick one) that shows the window and hides it again. Escape
   hides it too. Cmd-W is a real close, and the next press opens it again.
 - A menu bar icon on macOS (system tray on Windows and Linux): Scratchpad
   (with your chord as its label), New note, Settings.
 - A floating toolbar in the window: always on top, the actions palette,
-  browse notes, new note. It is also the window's drag handle, because
-  hiding the title bar removes Obsidian's own.
+  browse notes, new note. It is also the window's drag handle: under the
+  default hidden frame style Obsidian puts the drag region on the tab
+  strip, which this window hides.
 - A character count at the bottom centre, updated as you type.
 - An actions palette with ten rows, each with a real command behind it:
   New note, Duplicate note, Pin or unpin note, Browse notes, Toggle
@@ -34,7 +35,10 @@ changed, and a stored hotkey is the only setting that carries over.
   palette and hotkeys page with no default hotkeys.
 - Chords for those actions bound inside the scratchpad window only, live
   while it has focus and released when it loses focus, so the shortcut
-  chips in the palette are true rather than decorative.
+  chips in the palette are true rather than decorative. None of them
+  collides with an Obsidian default, because inside the window a chord
+  really does take that command away; the test suite holds the 1.13.7
+  default hotkey table so a new chord cannot skip the check.
 - Browse notes: every note in the scratchpad folder, pinned first, with
   its title, when it was last opened and how long it is, plus pin and
   delete on hover and on the selected row. Delete uses your configured
@@ -71,6 +75,18 @@ changed, and a stored hotkey is the only setting that carries over.
   at load. The record is written 0600 through a temp file and a rename.
 - `README.md` and `SECURITY.md` now say what the plugin reads and writes
   outside the vault, by full path, as the developer policies require.
+
+### Fixed before the tag
+- Flint's review of `430bbb0` found one HIGH and three MEDIUMs that are
+  Felix's, all fixed in the commit "fix: Flint's review of 0.1.0" on top
+  of it (a commit cannot carry its own hash): `isOpen` was keyed on the popout's
+  `BrowserWindow`, so a host that hands back no remote would have opened a
+  new window on every press without limit; a leaf can leave the popout
+  without `window-close` firing, so the layout itself is now the signal;
+  four chords shadowed core commands inside the window and are remapped;
+  and the key scope now parents on the active view's own scope rather than
+  on the keymap root. Nine LOWs rode along, including two document claims
+  that were not what the code does.
 
 ### Known limits
 - Built and gated without a running Obsidian; the window, the chord from

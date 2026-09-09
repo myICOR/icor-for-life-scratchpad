@@ -28,8 +28,8 @@ not add itself to your login items.
 - **It puts one icon in the menu bar** (system tray on Windows and
   Linux), with a menu of three items. Switch it off under Settings if
   you only want the hotkey.
-- **It opens one extra Obsidian window** and strips its tab strip, its
-  title row and its inline title, inside that window only. It can float
+- **It opens one extra Obsidian window** and hides its tab strip, its
+  view header and its inline title, inside that window only. It can float
   above other applications when you turn that on.
 - **It creates, renames and deletes notes in one folder,** the
   scratchpad folder you pick. Deleting goes to whatever trash you have
@@ -75,7 +75,9 @@ away again; so does Escape. Cmd-W really closes it, and the next press
 of the hotkey opens it again on the same note.
 
 **The toolbar** is the pill at the top right, and it is also the window's
-drag handle (the title bar is hidden, so something has to be):
+drag handle. Under Obsidian's default hidden frame style the drag region
+lives on the tab strip, which this window hides, so without the pill the
+window could not be moved at all.
 
 | Glyph | Does |
 | --- | --- |
@@ -119,21 +121,31 @@ keys to any of them.
 
 | Action | In the window |
 | --- | --- |
-| New note | Cmd-N |
-| Duplicate note | Cmd-D |
-| Pin note / Unpin note | Shift-Cmd-P |
-| Browse notes | Cmd-P |
+| New note | Option-Cmd-N |
+| Duplicate note | Shift-Cmd-D |
+| Pin note / Unpin note | Option-Cmd-P |
+| Browse notes | Shift-Cmd-P |
 | Toggle always on top | Shift-Cmd-A |
-| Find in note | Cmd-F |
+| Find in note | your own Obsidian hotkey (Cmd-F by default) |
 | Copy note as Markdown | Shift-Cmd-C |
 | Copy note as plain text | Option-Cmd-C |
 | Open in main window | Shift-Cmd-O |
 | Delete note | Shift-Cmd-Backspace |
 
 Those chords are live **only while the scratchpad window has focus**, and
-they are released the moment it loses focus, so they take nothing away
-from the rest of Obsidian or from any other application. On Windows and
-Linux, Cmd is Ctrl. The palette itself is Cmd-K.
+they are released the moment it loses focus, so outside the window they
+take nothing away from the rest of Obsidian or from any other
+application. On Windows and Linux, Cmd is Ctrl.
+
+**Inside the window a chord does take over**, so none of the ones above
+collide with an Obsidian default: every chord was checked against the
+1.13.7 hotkey table and the test suite holds that list. That is why New
+note is Option-Cmd-N rather than Cmd-N (Cmd-N and Shift-Cmd-N are both
+core), why Browse notes is Shift-Cmd-P rather than Cmd-P (the command
+palette), and why the actions palette has no chord at all (Cmd-K inserts
+a tag). Open the palette from the command glyph in the toolbar, or give
+it a hotkey of your own under Settings, Hotkeys. Find in note runs
+Obsidian's own editor search, so your own Cmd-F already does it.
 
 ## The hotkey is yours to pick
 

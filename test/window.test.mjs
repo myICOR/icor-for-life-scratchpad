@@ -46,6 +46,43 @@ test('the popout BrowserWindow comes from the popout own require, never the cach
   assert.doesNotMatch(remote, /electronWindow/, 'electronWindow is Obsidian private; the require path is documented Electron');
 });
 
+test('isOpen is keyed on the window, so a host with no remote cannot open a second popout', () => {
+  /* attachSync returns early when the popout hands back no remote, which
+     leaves wsWin and leaf set and bw null. Key this on bw and open()'s own
+     guard is false with a window on screen, so the next press opens
+     another one, and another (Flint H-1). */
+  assert.match(src, /get isOpen\(\): boolean \{\s*return this\.wsWin !== null;\s*\}/, 'isOpen reads the window, not its BrowserWindow');
+  assert.doesNotMatch(src, /get isOpen\(\): boolean \{\s*return this\.bw !== null;/, 'bw is null on a host with no remote');
+  assert.match(src, /get isDriveable\(\): boolean \{\s*return this\.bw !== null;\s*\}/, 'the remote question has its own name');
+  /* And the guard that stops the second window is the one that reads it. */
+  const open = src.slice(src.indexOf('  async open(file: TFile)'));
+  assert.match(open.slice(0, 200), /if \(this\.isOpen\) \{/, 'open() short-circuits on isOpen');
+});
+
+test('a leaf that leaves the popout without closing it is noticed', () => {
+  /* window-close fires only when the LAST leaf leaves, so dragging a
+     second tab in and the scratchpad tab out leaves the window alive with
+     this.leaf addressing another document (Flint M-1). */
+  assert.match(src, /checkLeaf\(\): boolean/);
+  assert.match(src, /container = leaf\.getContainer\(\)/);
+  assert.match(src, /if \(container === wsWin\) return true;/);
+  const check = src.slice(src.indexOf('checkLeaf(): boolean'));
+  const body = check.slice(0, check.indexOf('\n  }'));
+  assert.match(body, /this\.release\(\);[\s\S]*this\.cb\.onClosed\(\);/, 'the same teardown as forget');
+  assert.match(strip(read('src/main.ts')), /workspace\.on\('layout-change', \(\) => this\.window\.checkLeaf\(\)\)/);
+});
+
+test('the popout scope parents on the view own scope when it has one, never blindly on the root', () => {
+  /* app.scope is the ROOT scope; a popout's base is workspace.scope, which
+     delegates to the active view's own. Parenting on the root takes that
+     delegation out of the chain (Flint M-3). View.scope is public since
+     1.5.7; workspace.scope is not public at all. */
+  assert.match(src, /private scopeParent\(\): Scope \{\s*return this\.view\?\.scope \?\? this\.app\.scope;\s*\}/);
+  assert.match(src, /new Scope\(this\.scopeParent\(\)\)/);
+  assert.doesNotMatch(src, /new Scope\(this\.app\.scope\)/, 'the root is the fallback, not the default');
+  assert.match(src, /this\.scopeParentUsed !== this\.scopeParent\(\)/, 'a changed parent rebuilds the scope');
+});
+
 test('the toggle hides, it never closes, and Cmd-W stays a real close', () => {
   assert.match(src, /if \(bw\.isVisible\(\) && bw\.isFocused\(\)\) this\.hide\(\);\s*else this\.show\(\);/);
   assert.match(src, /this\.bw\?\.hide\(\)/, 'hide fires no beforeunload, so the leaf and the editor state stay alive');

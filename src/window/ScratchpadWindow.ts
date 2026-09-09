@@ -51,6 +51,9 @@ export interface WindowCallbacks {
    a member who moves the window and quits immediately keeps the position. */
 const BOUNDS_SAVE_MS = 400;
 const COUNT_PAINT_MS = 100;
+/* Long enough for a real window focus to arrive, short enough that a
+   member never waits on it. */
+const FOCUS_WAIT_MS = 300;
 
 export class ScratchpadWindow {
   private leaf: WorkspaceLeaf | null = null;
@@ -65,6 +68,7 @@ export class ScratchpadWindow {
      keeps them off the main window: pushScope pushes onto the stack of
      activeWindow at call time (Flint point 8a). */
   private scope: Scope | null = null;
+  private scopeParentUsed: Scope | null = null;
   private scopePushed = false;
 
   private readonly saveBounds = debounce(() => this.persistBounds(), BOUNDS_SAVE_MS, true);
@@ -72,7 +76,20 @@ export class ScratchpadWindow {
 
   constructor(private readonly app: App, private readonly cb: WindowCallbacks) {}
 
+  /* Keyed on the WINDOW, not on its BrowserWindow. attachSync returns
+     early when the popout hands back no remote (a future host that drops
+     node integration on popups, which src/electron/remote.ts already plans
+     for), and keying this on `bw` would leave isOpen false with a window
+     on screen: every press would open another popout, without limit, each
+     one without a toolbar because mount() guards on `this.chrome`. Flint
+     H-1, 2026-09-09. test/window.test.mjs pins it. */
   get isOpen(): boolean {
+    return this.wsWin !== null;
+  }
+
+  /* True when the window is open AND the main process is reachable, so the
+     caller knows whether show, hide and always-on-top can do anything. */
+  get isDriveable(): boolean {
     return this.bw !== null;
   }
 
@@ -141,7 +158,10 @@ export class ScratchpadWindow {
     this.wsWin = container;
     container.doc.body.classList.add(WINDOW_CLASS);
     const remote = getRemoteFor(container.win);
-    if (!remote) return;
+    if (!remote) {
+      new Notice('The scratchpad window is open, but this build does not let a plugin drive it, so the hotkey cannot show and hide it.');
+      return;
+    }
     this.popoutRemote = remote;
     const bw = remote.getCurrentWindow();
     this.bw = bw;
@@ -191,6 +211,13 @@ export class ScratchpadWindow {
       wsWin.win.removeEventListener('blur', onBlur);
       this.popScope();
     });
+    /* pushScope pushes onto activeWindow, not onto wsWin.win. In the normal
+       sequence they are the same window, because Obsidian's own focus
+       listener is registered in the WorkspaceWindow constructor and runs
+       first. In a race they are not, and the chords sit on the main
+       window's stack for a moment. It self-heals: popScope reads scope.win,
+       set at push time, not activeWindow, so nothing is ever stranded. Do
+       not "fix" popScope to read activeWindow (Flint, 2026-09-09). */
     if (wsWin.doc.hasFocus()) this.pushScope();
 
     const bw = this.bw;
@@ -216,8 +243,22 @@ export class ScratchpadWindow {
     });
   }
 
+  /* The parent matters. app.scope is the ROOT scope, while a popout's base
+     is installed as setWindowBaseScope(win, workspace.scope), and
+     workspace.scope delegates to the active view's own scope. A scope
+     parented on the root therefore takes the view-scope delegation out of
+     the chain for as long as it is on top. View.scope is public (@since
+     1.5.7) and workspace.scope is not, so the honest parent is the view's
+     own when it has one and the root when it does not. A MarkdownView
+     registers none today, which is why this costs nothing yet; it stops
+     being free the first time a view that does register one (a canvas
+     registers Mod+Z) lands in this window. Flint M-3, 2026-09-09. */
+  private scopeParent(): Scope {
+    return this.view?.scope ?? this.app.scope;
+  }
+
   private buildScope(): Scope {
-    const scope = new Scope(this.app.scope);
+    const scope = new Scope(this.scopeParent());
     for (const action of ACTIONS) {
       if (!action.chord) continue;
       const mods = [...action.chord.mods] as Modifier[];
@@ -231,7 +272,13 @@ export class ScratchpadWindow {
   }
 
   private pushScope(): void {
-    if (this.scopePushed || !this.scope) return;
+    if (this.scopePushed) return;
+    /* Rebuilt when the view under the window changed its scope, so the
+       parent is never stale. */
+    if (!this.scope || this.scopeParentUsed !== this.scopeParent()) {
+      this.scope = this.buildScope();
+      this.scopeParentUsed = this.scopeParent();
+    }
     this.app.keymap.pushScope(this.scope);
     this.scopePushed = true;
   }
@@ -257,7 +304,10 @@ export class ScratchpadWindow {
      unfocused, hide when it is the window in front. */
   toggle(): void {
     const bw = this.bw;
-    if (!bw) return;
+    if (!bw) {
+      this.show();
+      return;
+    }
     if (bw.isVisible() && bw.isFocused()) this.hide();
     else this.show();
   }
@@ -265,7 +315,13 @@ export class ScratchpadWindow {
   show(): void {
     const bw = this.bw;
     const remote = this.popoutRemote;
-    if (!bw || !remote) return;
+    if (!bw || !remote) {
+      /* No main-process handle on this host, so the window cannot be
+         raised from outside Obsidian. Focusing the leaf is the most that
+         is available and it is better than a control that does nothing. */
+      if (this.leaf) this.app.workspace.setActiveLeaf(this.leaf, { focus: true });
+      return;
+    }
     bringForward(remote, bw);
     /* The level survives hide and show, but a maximize or a fullscreen
        entry clears it, so it is re-asserted on every show. */
@@ -291,14 +347,17 @@ export class ScratchpadWindow {
     if (!wsWin) return;
     if (wsWin.doc.hasFocus()) return;
     await new Promise<void>((resolve) => {
+      let timer: number | null = null;
       const done = (): void => {
+        if (timer !== null) window.clearTimeout(timer);
+        timer = null;
         wsWin.win.removeEventListener('focus', done);
         resolve();
       };
       wsWin.win.addEventListener('focus', done, { once: true });
       /* Never hang: if focus never arrives the caller still gets its
          modal, in whatever window Obsidian thinks is active. */
-      window.setTimeout(done, 300);
+      timer = window.setTimeout(done, FOCUS_WAIT_MS);
     });
   }
 
@@ -343,6 +402,29 @@ export class ScratchpadWindow {
     } catch {
       /* the window went away between the event and this call */
     }
+  }
+
+  /* The leaf can leave the popout without window-close firing at all.
+     WorkspaceWindow.removeChild closes the window only when the LAST leaf
+     leaves, so dragging a second tab in and the scratchpad tab out leaves
+     the popout alive while this.leaf addresses a leaf in another document:
+     the toggle, the chords, the toolbar and the count would all point at
+     the wrong thing. Called from workspace 'layout-change' (Flint M-1,
+     2026-09-09). */
+  checkLeaf(): boolean {
+    const leaf = this.leaf;
+    const wsWin = this.wsWin;
+    if (!leaf || !wsWin) return true;
+    let container: unknown = null;
+    try {
+      container = leaf.getContainer();
+    } catch {
+      /* the leaf was detached; getContainer has nothing to answer with */
+    }
+    if (container === wsWin) return true;
+    this.release();
+    this.cb.onClosed();
+    return false;
   }
 
   /* window-close fires after every leaf was detached and after the DOM

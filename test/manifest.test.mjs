@@ -52,7 +52,12 @@ test('desktop only, floor 1.13.0', () => {
 });
 
 test('the description is what the directory accepts', () => {
+  /* validate-manifest does not run under `eslint src styles.css` (the
+     recommended config carries no files block for manifest.json), so its
+     four description rules are asserted here instead (Flint LOW). */
+  assert.ok(manifest.description.length >= 10, 'at least 10 characters');
   assert.ok(manifest.description.length <= 250, 'at most 250 characters');
+  assert.match(manifest.description, /^[A-Z]/, 'starts with a capital letter');
   assert.match(manifest.description, /\.$/, 'ends with a full stop');
   assert.doesNotMatch(manifest.description, /^(This|A plugin|An Obsidian plugin)/);
   assert.match(manifest.description, /ICOR for Life/);

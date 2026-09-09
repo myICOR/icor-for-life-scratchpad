@@ -9,8 +9,27 @@
  * Ids are bare (the app prefixes the plugin id) and names are sentence
  * case, both required by the directory's scanner. No action carries a
  * default Obsidian hotkey: the chords below live in the popout's own key
- * scope and are released the moment the window loses focus, so they take
- * nothing away from the rest of the app. */
+ * scope and are released the moment the window loses focus, so outside the
+ * scratchpad window they take nothing away from the rest of the app.
+ *
+ * INSIDE the window a chord DOES shadow whatever core binds to it, because
+ * each handler returns false and Keymap.onKeyEvent turns that into
+ * preventDefault plus stopPropagation. So none of these may collide with a
+ * core default. Every chord below was checked against the default hotkey
+ * table in the 1.13.7 bundle, and test/actions.test.mjs holds that list so
+ * a future chord cannot be added without the same check. What that ruled
+ * out, and why the obvious choices are not here (Flint, 2026-09-09):
+ *
+ *   Mod+P  command-palette:open        Mod+N  file-explorer:new-file
+ *   Mod+K  editor:insert-tag           Mod+O  switcher:open
+ *   Mod+D  editor:add-cursor-below     Mod+F  editor:open-search-replace
+ *   Mod+Shift+N  open-with-default-app:open
+ *
+ * The actions palette therefore carries no chord at all (the toolbar's
+ * command glyph opens it, and a member can bind their own), and "Find in
+ * note" carries none either: it runs Obsidian's own editor search, so the
+ * member's own Cmd-F already does it and taking that chord would only
+ * shadow the thing it calls. */
 
 export type ChordModifier = 'Ctrl' | 'Alt' | 'Shift' | 'Mod';
 
@@ -60,28 +79,28 @@ export const ACTIONS: readonly ActionDef[] = [
     id: ACTION_NEW_NOTE,
     name: 'New note',
     icon: 'lucide-plus',
-    chord: { mods: ['Mod'], key: 'N' },
+    chord: { mods: ['Mod', 'Alt'], key: 'N' },
     palette: { label: 'New note' },
   },
   {
     id: ACTION_DUPLICATE_NOTE,
     name: 'Duplicate note',
     icon: 'lucide-copy-plus',
-    chord: { mods: ['Mod'], key: 'D' },
+    chord: { mods: ['Mod', 'Shift'], key: 'D' },
     palette: { label: 'Duplicate note' },
   },
   {
     id: ACTION_TOGGLE_PIN,
     name: 'Pin or unpin note',
     icon: 'lucide-pin',
-    chord: { mods: ['Mod', 'Shift'], key: 'P' },
+    chord: { mods: ['Mod', 'Alt'], key: 'P' },
     palette: { label: 'Pin note', altLabel: 'Unpin note', altIcon: 'lucide-pin-off' },
   },
   {
     id: ACTION_BROWSE_NOTES,
     name: 'Browse notes',
     icon: 'lucide-files',
-    chord: { mods: ['Mod'], key: 'P' },
+    chord: { mods: ['Mod', 'Shift'], key: 'P' },
     palette: { label: 'Browse notes' },
   },
   {
@@ -95,7 +114,10 @@ export const ACTIONS: readonly ActionDef[] = [
     id: ACTION_FIND_IN_NOTE,
     name: 'Find in note',
     icon: 'lucide-text-search',
-    chord: { mods: ['Mod'], key: 'F' },
+    /* None: this row runs Obsidian's own editor search, which the member
+       already has a chord for. Taking Mod+F would shadow the very command
+       the row calls. */
+    chord: null,
     palette: { label: 'Find in note' },
   },
   {
@@ -130,7 +152,9 @@ export const ACTIONS: readonly ActionDef[] = [
     id: ACTION_OPEN_ACTIONS,
     name: 'Open the actions palette',
     icon: 'lucide-command',
-    chord: { mods: ['Mod'], key: 'K' },
+    /* None: Mod+K is editor:insert-tag and nothing else was worth a core
+       chord for a button that is already on the toolbar. */
+    chord: null,
     palette: null,
   },
   {

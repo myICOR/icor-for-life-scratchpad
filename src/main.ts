@@ -107,6 +107,11 @@ export default class ScratchpadPlugin extends Plugin {
     /* Cmd-W, a tab drag out and a quit all close the popout for real; the
        plugin cannot intercept any of them, so it forgets the window. */
     this.registerEvent(this.app.workspace.on('window-close', (win: WorkspaceWindow) => this.window.forget(win)));
+    /* And the other half: the leaf can leave the popout WITHOUT the window
+       closing, when a second tab was dragged in first. window-close fires
+       only for the last leaf out, so the layout itself is the signal
+       (Flint M-1). */
+    this.registerEvent(this.app.workspace.on('layout-change', () => this.window.checkLeaf()));
 
     if (Platform.isDesktop) {
       this.remote = getRemote();
@@ -141,6 +146,10 @@ export default class ScratchpadPlugin extends Plugin {
   }
 
   override onunload(): void {
+    /* The rename debouncer lives on the plugin, not on the window, so
+       release() does not reach it and a rename could land 800 ms after
+       unload (Flint LOW). */
+    this.renameSoon.cancel();
     this.releaseMainProcessState();
     /* The popout is Obsidian's window, not the plugin's: on disable it
        simply becomes a normal window with the note in it. Nothing is
@@ -408,11 +417,19 @@ export default class ScratchpadPlugin extends Plugin {
         this.runAppCommand('editor:open-search');
         return;
       case ACTION_COPY_MARKDOWN:
-        await this.copy(this.window.view?.editor.getValue() ?? '', 'Copied the note as Markdown');
+      case ACTION_COPY_PLAIN_TEXT: {
+        const view = this.window.view;
+        if (!view) {
+          /* Both copies are also plain commands, so they can be run from
+             the main window with no scratchpad open. Copying '' and saying
+             "Copied" would be a lie. */
+          new Notice('There is no scratchpad note open to copy.');
+          return;
+        }
+        const text = view.editor.getValue();
+        await this.copy(action === ACTION_COPY_MARKDOWN ? text : toPlainText(text), action === ACTION_COPY_MARKDOWN ? 'Copied the note as Markdown' : 'Copied the note as plain text');
         return;
-      case ACTION_COPY_PLAIN_TEXT:
-        await this.copy(toPlainText(this.window.view?.editor.getValue() ?? ''), 'Copied the note as plain text');
-        return;
+      }
       case ACTION_OPEN_IN_MAIN_WINDOW: {
         if (!file) return;
         const leaf = this.app.workspace.getLeaf('tab');
@@ -505,9 +522,23 @@ export default class ScratchpadPlugin extends Plugin {
     if (next) await this.openInWindow(next);
   }
 
+  /* navigator.clipboard.writeText rejects with a DOMException when its
+     document is not focused, and both copy actions are also plain commands
+     that can be run from the main window while the popout is hidden. So
+     the write goes through whichever of the two documents actually has
+     focus, and refuses in a sentence rather than showing the raw exception
+     (Flint LOW). */
   private async copy(text: string, done: string): Promise<void> {
-    const nav = this.window.win?.navigator ?? window.navigator;
-    await nav.clipboard.writeText(text);
+    /* activeDocument and activeWindow are Obsidian's own handles on the
+       focused document and window, which is exactly the pair the clipboard
+       API will accept a write from. Reading the global `document` here
+       would always mean the main window, and both copy actions can run
+       while the popout is the focused one. */
+    if (!activeDocument.hasFocus()) {
+      new Notice('Bring an Obsidian window forward first: the system only allows a copy from the focused window.');
+      return;
+    }
+    await activeWindow.navigator.clipboard.writeText(text);
     new Notice(done);
   }
 
@@ -540,6 +571,12 @@ export default class ScratchpadPlugin extends Plugin {
     new Notice(`Open the settings and pick ${PLUGIN_NAME} under community plugins.`);
   }
 
+  /* The boolean is weaker than it looks: executeCommandById is
+     `!!findCommand(id) && executeCommand(...)`, and executeCommand returns
+     true whenever the command exists and does not throw, INCLUDING when
+     its checkCallback declines. So the false branch only ever catches a
+     missing command id, which is exactly what the notice says (Flint,
+     2026-09-09). Do not read the true as proof that anything happened. */
   private runAppCommand(id: string): void {
     const commands = (this.app as unknown as { commands?: { executeCommandById?: (id: string) => boolean } }).commands;
     if (commands && typeof commands.executeCommandById === 'function' && commands.executeCommandById(id)) return;

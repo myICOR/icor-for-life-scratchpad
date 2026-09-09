@@ -89,7 +89,7 @@ test('every register of the chord is preceded by an unregister of the same chord
 test('main-process state is released on unload and on beforeunload, and the tray reference is module-level', () => {
   const main = strip(read('src/main.ts'));
   assert.match(main, /registerDomEvent\(window, 'beforeunload'/, 'Cmd-R reload skips onunload');
-  assert.match(main, /onunload\(\): void \{\s*this\.releaseMainProcessState\(\);/);
+  assert.match(main, /onunload\(\): void \{\s*this\.renameSoon\.cancel\(\);\s*this\.releaseMainProcessState\(\);/, 'the rename debouncer lives on the plugin, so release() does not reach it');
   const release = main.slice(main.indexOf('private releaseMainProcessState'));
   const body = release.slice(0, release.indexOf('\n  }'));
   assert.match(body, /hotkey\?\.release\(\)/);

@@ -99,7 +99,13 @@ plugin's own `icor-scr-` classes, and `test/hygiene.test.mjs` pins that.
 **It binds keys in two places, both scoped.** A `Scope` with the actions'
 chords is pushed when the scratchpad window takes focus and popped when
 it loses focus (`src/window/ScratchpadWindow.ts`), so those chords exist
-only inside that window. A `keydown` listener on that window's document
+only inside that window. Inside it they do take precedence over whatever
+else is bound, because each handler returns `false`, so none of them
+collides with an Obsidian default and `test/actions.test.mjs` holds the
+1.13.7 default hotkey table to keep it that way. The scope parents on the
+active view's own scope when that view has one and on `app.scope`
+otherwise; `app.scope` is the keymap root and `workspace.scope`, which a
+popout's base normally delegates through, has no public handle. A `keydown` listener on that window's document
 handles Escape and yields to anything that already consumed the key. The
 recorder (`src/hotkey/recorder.ts`) adds a capture-phase `keydown`
 listener to the settings window's document for the length of one

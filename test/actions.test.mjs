@@ -63,7 +63,7 @@ test('the pin row is the only one that flips its label and its glyph', () => {
 
 test('chips are written in Apple order regardless of the order in the table', () => {
   assert.deepEqual(chordGlyphs({ mods: ['Shift', 'Mod'], key: 'P' }, true), ['⇧', '⌘', 'P']);
-  assert.deepEqual(chordGlyphs({ mods: ['Mod'], key: 'N' }, true), ['⌘', 'N']);
+  assert.deepEqual(chordGlyphs({ mods: ['Mod', 'Alt'], key: 'N' }, true), ['⌥', '⌘', 'N']);
   assert.deepEqual(chordGlyphs({ mods: ['Mod', 'Alt'], key: 'c' }, true), ['⌥', '⌘', 'C']);
   assert.deepEqual(chordGlyphs({ mods: ['Mod', 'Shift'], key: 'Backspace' }, true), ['⇧', '⌘', '⌫']);
   assert.deepEqual(chordGlyphs(null, true), []);
@@ -74,6 +74,43 @@ test('off macOS the command glyph becomes Ctrl', () => {
   assert.deepEqual(chordGlyphs({ mods: ['Mod', 'Shift'], key: 'A' }, false), ['⇧', 'Ctrl', 'A']);
 });
 
-test('every action the palette shows also has a chord, so no row shows an empty chip strip by accident', () => {
-  for (const action of PALETTE_ACTIONS) assert.ok(action.chord, `${action.id} has no chord`);
+/* Every default chord in the Obsidian 1.13.7 bundle, read out of the
+   hotkey table by Flint on 2026-09-09 and pinned here. A chord in the
+   popout's scope returns false, and Keymap.onKeyEvent turns that into
+   preventDefault plus stopPropagation, so a collision silently takes a
+   core command away from the member for as long as the window has focus.
+   Re-read this list against the bundle when the floor moves. */
+const CORE_DEFAULT_CHORDS = new Set([
+  'Mod+,', 'Mod+/', 'Mod+9', 'Mod+;', 'Mod+B', 'Mod+D', 'Mod+E', 'Mod+Enter', 'Mod+F',
+  'Mod+G', 'Mod+H', 'Mod+I', 'Mod+K', 'Mod+N', 'Mod+O', 'Mod+P', 'Mod+S', 'Mod+T',
+  'Mod+W', 'Mod+L',
+  'Mod+Shift+F', 'Mod+Shift+G', 'Mod+Shift+N', 'Mod+Shift+T', 'Mod+Shift+W',
+  'Alt+Mod+F', 'Alt+Mod+Enter', 'Alt+Mod+ArrowLeft', 'Alt+Mod+ArrowRight',
+  'Alt+Mod+Shift+Enter',
+]);
+
+const chordKey = (chord) => [...chord.mods].sort().reverse().join('+').replace('Shift+Mod', 'Mod+Shift').replace('Mod+Alt', 'Alt+Mod') + '+' + chord.key.toUpperCase();
+
+test('no chord shadows a core default, because inside the window it would take that command away', () => {
+  const clashes = [];
+  for (const action of ACTIONS) {
+    if (!action.chord) continue;
+    const mods = [...action.chord.mods];
+    const written = `${mods.includes('Alt') && mods.includes('Mod') ? 'Alt+Mod' : mods.includes('Shift') ? 'Mod+Shift' : 'Mod'}+${action.chord.key.toUpperCase()}`;
+    if (CORE_DEFAULT_CHORDS.has(written)) clashes.push(`${action.id} takes ${written}`);
+  }
+  assert.deepEqual(clashes, [], `chords that shadow a core command:\n  ${clashes.join('\n  ')}`);
+});
+
+test('the two rows that carry no chord are the two that should not', () => {
+  const chordless = ACTIONS.filter((a) => a.chord === null).map((a) => a.id).sort();
+  assert.deepEqual(chordless, ['find-in-note', 'open-actions', 'toggle-window']);
+  /* find-in-note runs Obsidian's own editor search, so taking Mod+F would
+     shadow the very command the row calls; the actions palette is on the
+     toolbar and Mod+K is editor:insert-tag; the global chord owns the
+     window toggle. Every other palette row has one. */
+  for (const action of PALETTE_ACTIONS) {
+    if (action.id === 'find-in-note') continue;
+    assert.ok(action.chord, `${action.id} has no chord`);
+  }
 });

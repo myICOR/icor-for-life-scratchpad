@@ -15,11 +15,13 @@
 
 /* A tab strip in a one-tab window is chrome for a choice that does not
    exist; the note's title is the window's title and macOS already draws it;
-   the status bar is replaced by our own count line; the inline title is
-   that same fact a third time. */
+   the inline title is that same fact a third time.
+
+   No .status-bar rule: App.statusBar is built once against the main
+   window's own element and no popout ever gets one, so hiding it here
+   would be a rule that never matches anything (Flint LOW, 2026-09-09). */
 body.icor-scr-window .workspace-tab-header-container,
 body.icor-scr-window .view-header,
-body.icor-scr-window .status-bar,
 body.icor-scr-window .inline-title {
   display: none;
 }
@@ -62,11 +64,16 @@ body.icor-scr-window .icor-scr-toolbar {
   box-shadow: var(--shadow-s);
 }
 
-/* Hiding the title bar and the tab header removes both of Obsidian's own
-   drag regions, so the pill is the window's drag handle. The class is named
-   twice to outrank Obsidian's own
-   `body.is-frameless > .app-container ~ *  { -webkit-app-region: no-drag }`
-   by specificity rather than by source order. */
+/* The pill is the window's drag handle. Under the default hidden frame
+   style Obsidian itself takes the drag off the title bar
+   (`.is-hidden-frameless:not(.starter, .is-popout-modal) .titlebar
+   { -webkit-app-region: no-drag }`) and puts it on
+   `.workspace-tab-header-container`, which the rule above hides. So the
+   window has no drag region left, which reads as a broken window rather
+   than as a missing property. The class is named twice to outrank
+   `body.is-frameless > .app-container ~ * { -webkit-app-region: no-drag }`
+   at (0,3,1) against (0,2,1), by specificity rather than by source order,
+   which is not a property a plugin controls. */
 /* eslint-disable css/no-invalid-properties -- -webkit-app-region is a real
    Chromium property that the CSS linter's data does not carry; it is the
    only way to give a frameless window a drag handle. */

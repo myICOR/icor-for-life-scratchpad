@@ -106,6 +106,10 @@ including that there is no `await` between `openPopoutLeaf` and the
 bounds. Put one there and the member sees Obsidian's 600 by 600 minimum
 flash before the window settles.
 
+`isOpen` reads `wsWin`, never `bw`. A host that hands back no remote
+leaves `bw` null with a window on screen, and keying the guard on `bw`
+would let every press open another popout.
+
 Show and hide, never close. `hide()` fires no `beforeunload`, so the
 leaf, the view and the editor state stay alive and the toggle is free.
 Cmd-W is a real close and cannot be intercepted; `window-close` drops the
@@ -117,7 +121,19 @@ hidden.
 
 A `Scope` carrying the actions' chords is pushed when the window takes
 focus and popped when it loses it, which is what keeps those chords out
-of the rest of Obsidian.
+of the rest of Obsidian. It parents on the active view's own scope when
+that view has one and on `app.scope` when it does not: `app.scope` is the
+keymap ROOT, while a popout's base is `workspace.scope`, which delegates
+to the view. There is no public handle on `workspace.scope`, so the view
+is the closest honest parent. Inside the window a chord genuinely shadows
+whatever core binds to it, so `test/actions.test.mjs` holds the 1.13.7
+default hotkey table and refuses a collision.
+
+The window is forgotten on two signals, not one. `window-close` fires
+only when the LAST leaf leaves a popout, so a leaf dragged out of a
+two-tab scratchpad window would leave the plugin driving a window that
+holds someone else's note; `checkLeaf()` on `layout-change` catches
+that.
 
 ## The notes
 
