@@ -149,7 +149,19 @@ flag still holds the pre-key state for the whole synchronous dispatch.
 Fullscreen and maximise are allowed. Both clear always-on-top and macOS
 refuses the flag while fullscreen, so it is re-applied from the SETTING
 on `leave-full-screen` and `unmaximize`, and the remembered rectangle is
-never read while the window is expanded.
+never read while the window is expanded. Readable line width is not
+touched at all: Obsidian's own rule is a `max-width` on the editor sizer,
+which does not bind in a narrow window and centres in a wide one, so both
+sizes are correct with no rule and no width class of ours.
+
+"Open in main window" is the one workspace call that must not mean
+"here". `getLeaf('tab')` is `createLeafInTabGroup()`, which asks
+`getMostRecentLeaf()` with no root and therefore searches the root split
+and the popouts together, so the scratchpad's leaf wins;
+`createLeafInParent(rootSplit, -1)` avoids that and makes a split column
+with no tab header. The route is `getMostRecentLeaf(rootSplit)`,
+`setActiveLeaf` on that leaf (which stamps its `activeTime`), then
+`getLeaf('tab')`.
 
 The window is forgotten on two signals, not one. `window-close` fires
 only when the LAST leaf leaves a popout, so a leaf dragged out of a

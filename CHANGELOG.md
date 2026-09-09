@@ -15,7 +15,9 @@ changed, and a stored hotkey is the only setting that carries over.
 ### Added
 - A floating scratchpad window: a real Obsidian popout on a real markdown
   leaf, with the tab strip and the view header hidden inside that window
-  only, and readable line width off. Other editing plugins work in it.
+  only. Readable line width is left to your own setting, so a narrow
+  window fills its width and a fullscreen one centres the column exactly
+  as the main window does. Other editing plugins work in it.
 - A global hotkey you record yourself (no default; nothing is registered
   until you pick one) that shows the window and hides it again. Escape
   hides it too. Cmd-W is a real close, and the next press opens it again.
@@ -96,6 +98,16 @@ changed, and a stored hotkey is the only setting that carries over.
   resolves against the active leaf. New notes landed in the folder root as
   "Untitled". The window could not be dragged and the green button was
   dead.
+
+### Fixed in beta round 2
+- Two more from Tom's second live test. In fullscreen the note hugged the
+  left edge of a 2000 pixel screen, because the plugin forced readable
+  line width off inside the window; the override is deleted, and
+  Obsidian's own `max-width` handles both sizes with nothing written here.
+  And "Open in main window" created a split column with no tab header,
+  because `createLeafInParent(rootSplit, -1)` inserts into the split
+  itself; the tab now goes into the main window's own tab group, found by
+  naming the root on `getMostRecentLeaf`.
 
 ### Fixed before the tag
 - Flint's review of `430bbb0` found one HIGH and three MEDIUMs that are

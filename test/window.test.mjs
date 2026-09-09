@@ -195,16 +195,37 @@ test('the count is debounced and scoped to the window own view, and nothing rena
   assert.doesNotMatch(read('styles.css'), /\.inline-title \{\s*display: none/, 'the inline title is the rename surface');
 });
 
-test('open in main window builds the leaf in the main window root split, and reveals one that is already there', () => {
-  /* getLeaf('tab') resolves against the ACTIVE leaf, which is the one in
-     the popout, so the first build opened the note in the scratchpad window
-     itself and only brought Obsidian forward (Tom, defect 3). */
+test('open in main window opens a real tab in the main window own tab group', () => {
+  /* Two roots, both read out of the 1.13.7 bundle. getLeaf('tab') is
+     createLeafInTabGroup(), which calls getMostRecentLeaf() with NO root
+     and therefore searches rootSplit AND floatingSplit together, so the
+     scratchpad's own leaf won and the note opened in the popout (Tom,
+     defect 3). createLeafInParent(rootSplit, -1) then put the leaf in the
+     root split itself, which is a split column with no tab header and no
+     close button (defect 9). Naming the root on getMostRecentLeaf, then
+     making that leaf active, is what points the tab call at the main
+     window. */
+  const main = strip(read('src/main.ts'));
+  const body = main.slice(main.indexOf('private newTabInMainWindow('));
+  const block = body.slice(0, body.indexOf('\n  }'));
+  assert.match(block, /workspace\.getMostRecentLeaf\(workspace\.rootSplit\)/, 'the root is named, or the popout leaf wins');
+  const active = block.indexOf('workspace.setActiveLeaf(inRoot, { focus: false })');
+  const tab = block.indexOf("workspace.getLeaf('tab')");
+  assert.ok(active >= 0 && tab >= 0 && active < tab, 'the root leaf is made active BEFORE the tab is asked for');
+  assert.match(block, /focus: false/, 'the main window is not raised before the note is in it');
+  /* createLeafInParent survives only as the empty-main-window fallback,
+     never on the path a running vault takes. */
+  assert.equal([...main.matchAll(/createLeafInParent/g)].length, 1, 'exactly one, and it is the fallback');
+  assert.ok(block.indexOf('createLeafInParent') > tab, 'the fallback is below the tab route, not on it');
+  assert.match(block, /if \(inRoot\) \{[\s\S]*return workspace\.getLeaf\('tab'\);\s*\}/, 'the fallback is only reached when the main window holds no leaf');
+});
+
+test('open in main window reveals a note that is already open there, and puts the scratchpad away', () => {
   const main = strip(read('src/main.ts'));
   const body = main.slice(main.indexOf('private async openInMainWindow('));
   const block = body.slice(0, body.indexOf('\n  }'));
-  assert.doesNotMatch(main, /getLeaf\('tab'\)/, 'a tab relative to the active leaf lands in the popout');
-  assert.match(block, /workspace\.createLeafInParent\(workspace\.rootSplit, -1\)/);
   assert.match(block, /leaf\.getContainer\(\) instanceof WorkspaceWindow\) return;/, 'a popout leaf is not the main window');
+  assert.match(block, /const leaf = found \?\? this\.newTabInMainWindow\(\)/);
   assert.match(block, /if \(!found\) await leaf\.openFile\(file, \{ active: true \}\)/, 'a note already open is revealed, not opened twice');
   const active = block.indexOf('workspace.setActiveLeaf(leaf, { focus: true })');
   const reveal = block.indexOf('await workspace.revealLeaf(leaf)');

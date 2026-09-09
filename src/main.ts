@@ -430,13 +430,26 @@ export default class ScratchpadPlugin extends Plugin {
     }
   }
 
-  /* The note, as a tab in the MAIN window, with that window in front.
-     workspace.getLeaf('tab') resolves against the ACTIVE leaf, which is the
-     one in the popout, so the first build opened the note in the scratchpad
-     window itself and only brought Obsidian forward (Tom's live test,
-     2026-09-09). createLeafInParent names the main window's root split
-     outright. A note already open in a root-split tab is revealed rather
-     than opened a second time. */
+  /* The note, as a tab in the MAIN window's own tab group, with that
+     window in front.
+
+     Two wrong turns, both read out of the 1.13.7 bundle after Tom hit
+     them. `workspace.getLeaf('tab')` is `createLeafInTabGroup()`, which
+     calls `getMostRecentLeaf()` with NO root, and that searches
+     `[rootSplit, floatingSplit]` together: the scratchpad's own leaf is
+     the most recently active one, so the note opened inside the popout.
+     `createLeafInParent(rootSplit, -1)` then put the leaf straight into
+     the root split, which is a new split COLUMN beside the tab group,
+     with no tab header and no way to close it.
+
+     The route that works is the same call with the root named:
+     `getMostRecentLeaf(rootSplit)` iterates only the main window, and
+     `setActiveLeaf` stamps `activeTime` on the leaf it is given, so the
+     `getLeaf('tab')` that follows finds that leaf's tab group rather than
+     the popout's and inserts a real tab beside it. `focus: false` on that
+     first call keeps the main window from being raised before the note is
+     in it. A note already open in the main window is revealed instead of
+     opened a second time. */
   private async openInMainWindow(file: TFile): Promise<void> {
     const workspace = this.app.workspace;
     let open: WorkspaceLeaf | null = null;
@@ -446,7 +459,7 @@ export default class ScratchpadPlugin extends Plugin {
       if (view instanceof MarkdownView && view.file?.path === file.path) open = leaf;
     });
     const found: WorkspaceLeaf | null = open;
-    const leaf = found ?? workspace.createLeafInParent(workspace.rootSplit, -1);
+    const leaf = found ?? this.newTabInMainWindow();
     if (!found) await leaf.openFile(file, { active: true });
     workspace.setActiveLeaf(leaf, { focus: true });
     await workspace.revealLeaf(leaf);
@@ -455,6 +468,23 @@ export default class ScratchpadPlugin extends Plugin {
        somewhere else. A window they pinned above everything stays: that
        flag is a standing instruction, not a per-action one. */
     if (!this.settings.alwaysOnTop) this.window.hide();
+  }
+
+  private newTabInMainWindow(): WorkspaceLeaf {
+    const workspace = this.app.workspace;
+    const inRoot = workspace.getMostRecentLeaf(workspace.rootSplit);
+    if (inRoot) {
+      workspace.setActiveLeaf(inRoot, { focus: false });
+      return workspace.getLeaf('tab');
+    }
+    /* Only when the main window holds no leaf at all, which a running
+       vault does not reach: Obsidian keeps an empty-state tab in the root
+       split even after the last note is closed. There is no tab group to
+       insert into in that state, so the split itself is the parent.
+       `getLeaf(true)` cannot serve here, because with no root leaf its
+       own `getMostRecentLeaf()` answers with the scratchpad's leaf and the
+       note would open back in the popout. */
+    return workspace.createLeafInParent(workspace.rootSplit, -1);
   }
 
   private async openActions(): Promise<void> {

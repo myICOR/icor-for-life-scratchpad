@@ -41,13 +41,32 @@ body.icor-scr-window .view-header {
   display: none;
 }
 
-/* Readable line width is forced off: a popout is already narrow, and a
-   centred column inside a narrow window wastes the surface twice. Higher
-   specificity than Obsidian's own rule, so no !important is needed. */
-body.icor-scr-window .markdown-source-view.is-readable-line-width .cm-sizer,
-body.icor-scr-window .markdown-preview-view.is-readable-line-width .markdown-preview-sizer {
-  max-width: none;
-}
+/* READABLE LINE WIDTH IS OBSIDIAN'S, AND THERE IS DELIBERATELY NO RULE
+   HERE. The first build forced it off, on the argument that a centred
+   column inside a narrow popout wastes the surface twice. That is true at
+   480 pixels and wrong at 2000: in fullscreen the note hugged the left
+   edge of the screen while the main window centres the same note (Tom,
+   2026-09-09).
+
+   The fix is a deletion rather than a width class the plugin toggles,
+   because max-width IS the width query. Obsidian's whole readable-line-
+   width behaviour is `max-width: var(--file-line-width)` plus auto side
+   margins on .cm-sizer and .markdown-preview-sizer, read from the 1.13.7
+   app.css. A max-width larger than the space available never binds, so a
+   480-pixel window fills its width exactly as before, and a fullscreen
+   one caps at the member's own line width and centres, inline title
+   included, because the title lives inside the same sizer. A member who
+   turned readable line width off gets a full-width window at every size,
+   which is what respecting their setting means.
+
+   A class toggled from the popout's own width would have had to compute
+   that threshold in JavaScript, against the window's OUTER width, on five
+   Electron events, to arrive at the answer the layout engine already has
+   from the real content box. The container query the brief suggested is
+   not available either way: a custom property cannot be read inside an
+   @container or @media condition. test/hygiene.test.mjs holds this
+   deletion, because the way to lose it again is to write one helpful
+   rule. */
 
 /* The top pad is the headroom the first line and Obsidian's own find bar
    need to clear the traffic lights and the floating pill, and the bottom

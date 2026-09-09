@@ -260,6 +260,37 @@ test('the window has a drag region of its own, because hiding the chrome took bo
   assert.match(css, /-webkit-app-region: no-drag/, 'the buttons and the title stay clickable');
 });
 
+test('the plugin never touches the width of the editor column, so readable line width stays the member choice', () => {
+  /* The first build forced readable line width off inside the window, and
+     in fullscreen the note hugged the left edge of a 2000 pixel screen
+     while the main window centred the same note (Tom, 2026-09-09). The
+     fix is the absence of a rule: Obsidian's own behaviour is a
+     max-width, which never binds in a narrow window and centres in a wide
+     one, so both sizes are right with nothing written here. The way to
+     lose that again is one helpful rule, which is what this guards. */
+  const css = read('styles.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  for (const m of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+    const selector = m[1].trim();
+    if (!/cm-sizer|cm-content|cm-line|markdown-preview-sizer|is-readable-line-width|markdown-source-view|markdown-preview-view/.test(selector)) continue;
+    assert.doesNotMatch(m[2], /(^|[\s;])(max-)?width\s*:|margin(-inline|-left|-right)?\s*:/, `${selector} overrides the editor column width`);
+  }
+  /* And no width class of the plugin's own crept back in to do it from
+     JavaScript instead. */
+  assert.doesNotMatch(css, /icor-scr-wide/);
+  for (const f of sources) assert.doesNotMatch(strip(readFileSync(f, 'utf8')), /icor-scr-wide|file-line-width/, `${rel(f)} computes a line width`);
+});
+
+test('the drag band and the count line span the window, so a centred column cannot pull them in', () => {
+  const css = read('styles.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  for (const cls of ['icor-scr-dragbar', 'icor-scr-footer']) {
+    const rule = css.match(new RegExp(`body\\.icor-scr-window \\.${cls} \\{([^}]*)\\}`));
+    assert.ok(rule, `${cls} has a rule`);
+    assert.match(rule[1], /position: fixed/, `${cls} is out of the editor flow`);
+    assert.match(rule[1], /left: 0/, `${cls} starts at the window edge`);
+    assert.match(rule[1], /right: 0/, `${cls} ends at the window edge`);
+  }
+});
+
 test('no literal colour anywhere in src; the icon is the embedded PNG, handed to the Tray as a path', () => {
   for (const f of sources) {
     const text = strip(readFileSync(f, 'utf8'));
