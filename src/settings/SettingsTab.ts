@@ -1,27 +1,37 @@
 /* The settings page, declared: Obsidian 1.13 renders `getSettingDefinitions()`
- * and indexes it for settings search. The hotkey row is the one imperative
- * row (a `render` definition), because a recorder is not one of the
- * declarative control types. Every change is persisted and then applied at
- * once: the hotkey re-registers, the tray is created, rebuilt or removed. */
-import { PluginSettingTab } from 'obsidian';
+ * and indexes it for settings search. Two rows are imperative (`render`
+ * definitions), because neither a hotkey recorder nor a vault list is one of
+ * the declarative control types.
+ *
+ * The vault list is behind a button on purpose. Reading Obsidian's own
+ * obsidian.json hands this plugin the path of every vault on the machine,
+ * and no feature needs it: the window, the tray, the chord and the notes all
+ * work with zero registry reads. So it is read at the moment the member asks
+ * to see it, which is also the moment they read why (Vex, 2026-09-09). */
+import { PluginSettingTab, Setting } from 'obsidian';
 import type { App } from 'obsidian';
-import type QuickNotesPlugin from '../main';
+import { CLASS_PREFIX } from '../constants';
+import { getNode } from '../electron/ownerRecord';
+import { listVaults } from '../electron/vaultRegistry';
+import type { VaultListing } from '../electron/vaultRegistry';
 import { renderHotkeyRecorder } from '../hotkey/recorder';
 import { validateAccelerator } from '../hotkey/accelerator';
-import { DEFAULT_SETTINGS, normaliseSettings } from './model';
-import type { QuickNotesSettings } from './model';
+import { samePath, vaultMark } from '../ownership/record';
+import type ScratchpadPlugin from '../main';
+import { DEFAULT_SCRATCHPAD_FOLDER, normaliseSettings } from './model';
+import type { ScratchpadSettings } from './model';
 
 type Definitions = ReturnType<PluginSettingTab['getSettingDefinitions']>;
 
-const DAILY_HINT = 'There is no public way to read the Daily notes core plugin\'s settings, so this must match what you set there under Settings, Daily notes.';
+const OWNERSHIP_DESC = 'The window is per vault, but the icon and the hotkey live in the one desktop process every open vault shares, so exactly one vault owns them. A vault that does not own them shows no icon and registers no hotkey.';
 
-export class QuickNotesSettingsTab extends PluginSettingTab {
+export class ScratchpadSettingsTab extends PluginSettingTab {
   /* The recorder row's repaint, so a chord typed into the text row (or
      cleared) shows in the recorder without re-rendering the page under a
      focused text field. */
   private repaintRecorder: (() => void) | null = null;
 
-  constructor(app: App, private readonly plugin: QuickNotesPlugin) {
+  constructor(app: App, private readonly plugin: ScratchpadPlugin) {
     super(app, plugin);
   }
 
@@ -35,8 +45,8 @@ export class QuickNotesSettingsTab extends PluginSettingTab {
           {
             name: 'Global hotkey',
             desc: remote
-              ? 'Works in every application, not only in Obsidian. Nothing is registered until you record one. If the chord is already taken by another app, a notice says so; pick another.'
-              : 'Not available: this Obsidian build does not expose the desktop process to plugins.',
+              ? 'Works in every application, not only in Obsidian. Press it to bring the window forward, press it again to put it away. Nothing is registered until you record one. If the chord is already taken by another app, a notice says so; pick another.'
+              : 'Not available: this build does not expose the desktop process to plugins.',
             aliases: ['shortcut', 'keyboard', 'record'],
             render: (setting) => {
               const row = renderHotkeyRecorder(setting, {
@@ -71,26 +81,29 @@ export class QuickNotesSettingsTab extends PluginSettingTab {
       },
       {
         type: 'group',
-        heading: 'Daily note',
+        heading: 'Window',
         items: [
           {
-            name: 'Daily note folder',
-            desc: `Where the daily notes live, relative to the vault. Leave empty for the vault root. ${DAILY_HINT}`,
-            control: { type: 'folder', key: 'dailyFolder' },
+            name: 'Scratchpad folder',
+            desc: 'Where the scratchpad notes live, relative to the vault. Only the notes directly in this folder are shown; a note you move into a subfolder has left the scratchpad.',
+            control: { type: 'folder', key: 'scratchpadFolder', placeholder: DEFAULT_SCRATCHPAD_FOLDER },
           },
           {
-            name: 'Date format',
-            desc: `The file name of a daily note, as a moment format. ${DAILY_HINT}`,
-            control: { type: 'text', key: 'dailyFormat', placeholder: DEFAULT_SETTINGS.dailyFormat, validate: (v: string) => (v.trim() === '' ? 'The format cannot be empty.' : undefined) },
+            name: 'Always on top',
+            desc: 'The window floats above other applications. You can also toggle it from the anchor in the window itself.',
+            control: { type: 'toggle', key: 'alwaysOnTop' },
           },
           {
-            name: 'Append template',
-            desc: 'What one capture adds to the note. {{text}} is the note, {{time}} the time as HH:mm.',
-            control: {
-              type: 'text',
-              key: 'appendTemplate',
-              placeholder: DEFAULT_SETTINGS.appendTemplate,
-              validate: (v: string) => (v.includes('{{text}}') ? undefined : 'The template must contain {{text}}.'),
+            name: 'Window size and position',
+            desc: 'Remembered automatically. Move or resize the window and it comes back where you left it.',
+            render: (setting) => {
+              setting.addButton((b) =>
+                b.setButtonText('Forget the position').onClick(async () => {
+                  await this.setControlValue('bounds', null);
+                  this.update();
+                }),
+              );
+              return () => undefined;
             },
           },
         ],
@@ -101,7 +114,7 @@ export class QuickNotesSettingsTab extends PluginSettingTab {
         items: [
           {
             name: 'This vault owns the menu bar and the hotkey',
-            desc: 'The icon and the hotkey live in the one desktop process every open vault shares, so exactly one vault should own them. Switch this off in every other vault; a vault that does not own them shows no icon and registers no hotkey.',
+            desc: OWNERSHIP_DESC,
             control: { type: 'toggle', key: 'ownsMenuBar' },
           },
           {
@@ -109,19 +122,100 @@ export class QuickNotesSettingsTab extends PluginSettingTab {
             desc: 'The icon in the macOS menu bar (the system tray on Windows and Linux). The hotkey works without it, as long as this vault owns them.',
             control: { type: 'toggle', key: 'showMenuBarIcon', disabled: () => !this.plugin.settings.ownsMenuBar },
           },
+          {
+            name: 'Other vaults on this Mac',
+            desc: 'Shows which vault owns the menu bar. Reading the list opens Obsidian\'s own vault list, outside every vault; nothing is written to it. See the README section "Files this plugin touches outside your vault".',
+            aliases: ['ownership', 'multiple vaults', 'owner'],
+            render: (setting) => this.renderOwnership(setting),
+          },
         ],
       },
     ];
   }
 
+  private renderOwnership(setting: Setting): () => void {
+    const holder = setting.settingEl.parentElement ?? setting.settingEl;
+    const block = holder.createDiv({ cls: `${CLASS_PREFIX}vaults` });
+    const state = this.plugin.ownershipState.state;
+
+    if (state.available && state.state !== 'ok' && state.state !== 'absent') {
+      /* Never a Notice: the watcher can fire repeatedly and a notice storm
+         trains the member to ignore notices (Vex M-3). */
+      block.createDiv({
+        cls: `${CLASS_PREFIX}warn`,
+        text: `The owner record could not be read, so ownership has not changed. This vault ${this.plugin.ownsMainProcessState() ? 'is still the owner' : 'is still not the owner'}. Click "Make this vault the owner" to write a fresh record.`,
+      });
+    }
+
+    if (state.conflict) {
+      const banner = block.createDiv({ cls: `${CLASS_PREFIX}warn` });
+      banner.createSpan({ text: `The menu bar and the hotkey belong to the vault "${state.ownerName}", so this vault holds neither. ` });
+      setting.addButton((b) =>
+        b
+          .setButtonText('Make this vault the owner')
+          .setCta()
+          .onClick(() => {
+            const result = this.plugin.ownershipState.claim(Date.now());
+            if (!result.ok) {
+              banner.createSpan({ text: ` ${result.reason}` });
+              return;
+            }
+            this.plugin.applySettings();
+            this.update();
+          }),
+      );
+    }
+
+    setting.addButton((b) =>
+      b.setButtonText('Show other vaults').onClick(() => {
+        b.buttonEl.remove();
+        this.renderVaultList(block);
+      }),
+    );
+
+    return () => block.remove();
+  }
+
+  private renderVaultList(block: HTMLElement): void {
+    const node = getNode();
+    const list = block.createDiv({ cls: `${CLASS_PREFIX}vault-list` });
+    if (!node) {
+      list.createDiv({ cls: `${CLASS_PREFIX}vault-row`, text: 'This build does not expose the desktop process to plugins, so the vault list cannot be read.' });
+      return;
+    }
+    let vaults: VaultListing[] = [];
+    try {
+      vaults = listVaults(node, this.plugin.userData(), this.app.vault.configDir);
+    } catch {
+      vaults = [];
+    }
+    if (vaults.length === 0) {
+      list.createDiv({ cls: `${CLASS_PREFIX}vault-row`, text: 'No vault list could be read.' });
+      return;
+    }
+    const owner = this.plugin.ownershipState.state.record;
+    const mine = this.plugin.store.basePath();
+    for (const vault of vaults) {
+      const row = list.createDiv({ cls: `${CLASS_PREFIX}vault-row` });
+      row.createSpan({ cls: `${CLASS_PREFIX}vault-name`, text: vault.name });
+      const mark = vaultMark(vault, vault.installed, owner);
+      row.createSpan({ cls: `${CLASS_PREFIX}vault-mark`, text: samePath(vault.path, mine) ? `${mark} (this vault)` : mark });
+    }
+    list.createDiv({
+      cls: `${CLASS_PREFIX}vault-note`,
+      text: '"installed" means the manifest is in that vault\'s default config folder. A vault that renamed its config folder is reported as not installed, because Obsidian does not record the new name.',
+    });
+  }
+
   override getControlValue(key: string): unknown {
-    return this.plugin.settings[key as keyof QuickNotesSettings];
+    return this.plugin.settings[key as keyof ScratchpadSettings];
   }
 
   override async setControlValue(key: string, value: unknown): Promise<void> {
     this.plugin.settings = normaliseSettings({ ...this.plugin.settings, [key]: value });
     await this.plugin.saveSettings();
     this.plugin.applySettings();
+    if (key === 'alwaysOnTop') this.plugin.applyAlwaysOnTop();
     if (key === 'hotkey') this.repaintRecorder?.();
     if (key === 'ownsMenuBar') this.update();
   }

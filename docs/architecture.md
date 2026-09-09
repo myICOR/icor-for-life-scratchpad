@@ -1,115 +1,164 @@
 # Architecture
 
-One renderer (the vault window) owning two things in Electron's main
-process, plus a modal, a file append, and a protocol handler. Short,
-because the plugin is short.
+One renderer (the vault window) owning three things in Electron's main
+process, plus a second Obsidian window it strips and drives, a folder of
+notes, and a record outside every vault saying which vault owns the first
+two.
 
 ## Module map
 
 ```
-src/main.ts                  the Plugin: wires everything, owns applySettings()
-src/constants.ts             id, name, class prefix, protocol action, icon paths
-src/settings/model.ts        QuickNotesSettings, defaults, normaliseSettings()
-src/settings/SettingsTab.ts  declarative settings page (1.13 API) + one render row
+src/main.ts                  the Plugin: wires everything, owns applySettings() and the action dispatcher
+src/constants.ts             id, name, class prefix, protocol action, the two file names outside the vault
+src/actions/table.ts         pure: the one table behind the commands, the popout chords and the palette rows
+src/settings/model.ts        ScratchpadSettings, defaults, normaliseSettings(), rekeyForRename()
+src/settings/SettingsTab.ts  declarative settings page (1.13 API) + the recorder row and the vault list
 src/hotkey/accelerator.ts    pure: KeyboardEvent -> chord, validate, normalise
 src/hotkey/recorder.ts       the Record hotkey / Clear row (DOM, settings page)
-src/electron/remote.ts       the one door to @electron/remote; bringWindowForward()
+src/electron/remote.ts       the door to @electron/remote, for this window and for the popout; bringForward()
 src/electron/globalHotkey.ts GlobalHotkey: apply(chord) / release(), Flint's rules
 src/electron/tray.ts         module-level Tray + Menu; ensure / rebuild / destroy
 src/electron/trayIcon.ts     writes the embedded PNGs as *Template.png files; returns the path
 src/electron/trayIconFiles.ts pure: the two filenames, data URL decode, byte compare
-src/daily/format.ts          pure: path join, template render, append
-src/daily/dailyNote.ts       DailyNote: ensure(), append() via Vault.process, open()
-src/capture/CaptureModal.ts  the capture box (Modal), one instance at a time
-styles.css                   two surfaces, Obsidian variables only, icor-qnm- prefix
+src/electron/ownerRecord.ts  fs: the owner record, its directory watcher, the atomic write
+src/electron/vaultRegistry.ts fs: Obsidian's vault list, read on a click, every path validated
+src/ownership/record.ts      pure: the shapes of both files, canonical paths, the vault mark
+src/ownership/ownership.ts   the ownership state machine over those two modules
+src/window/ScratchpadWindow.ts the popout: open, adopt, show, hide, chrome, chords, bounds
+src/window/chrome.ts         the floating toolbar and the count line inside the popout
+src/notes/store.ts           the scratchpad folder: list, create, duplicate, trash, rename from the first line
+src/notes/naming.ts          pure: sanitise a name, read a title off a first line, dedupe
+src/notes/meta.ts            pure: the count text, the relative time, the group order
+src/notes/plain.ts           pure: markdown to the text a reader sees
+src/modals/ActionsModal.ts   the actions palette (FuzzySuggestModal)
+src/modals/BrowseModal.ts    the browse list (FuzzySuggestModal)
+src/modals/rows.ts           the row rendering both modals share
+styles.css                   Obsidian variables only, every selector anchored on the plugin
 ```
 
-## The two process boundaries
+`src/actions/table.ts` is the piece worth knowing about. The commands, the
+chords the popout binds and the palette rows are one array, so a shortcut
+chip cannot claim a key that nothing registers.
 
-**Renderer to main.** `getRemote()` (remote.ts) is the only place
-`@electron/remote` is obtained: `window.require('@electron/remote')`
-first, `window.electron.remote` second, cached, null when neither
-answers. Every main-process object (the Tray, the Menu, the
-globalShortcut registration) is created through it. The Tray's image is
+## The three process boundaries
+
+**Renderer to main, this window.** `getRemote()` (remote.ts) is the only
+place `@electron/remote` is obtained for the vault window:
+`window.require('@electron/remote')` first, `window.electron.remote`
+second, cached, null when neither answers. The Tray, the Menu and the
+`globalShortcut` registration are created through it. The Tray's image is
 the one thing NOT built here: remote serializes a NativeImage by value
 and the template flag does not survive, so the Tray gets a path and the
-main process builds the image from it (trayIcon.ts). When it is null
-the plugin still registers its commands, settings tab and protocol
-handler; only the icon and the chord are off, and the settings page says
-so.
+main process builds the image from it (trayIcon.ts).
 
-**Main to renderer.** Two callbacks cross back: the globalShortcut
-callback and the menu items' `click`. Both are arrow functions bound to
-the plugin instance that read current state at call time, so a rebuilt
-menu never captures a stale chord or a stale settings object. remote
-holds these callbacks on the main side for as long as the object that
-owns them lives; the plugin detaches the old Menu (`setContextMenu(null)`)
-before dropping its reference, and unregisters the chord before
-registering the next one.
+**Renderer to main, the popout.** `getRemoteFor(win)` takes the remote
+out of the POPOUT's own `require`, because `getCurrentWindow()` answers
+with the window whose require was used. The cached remote above would
+hand back the main window every time.
+
+**Renderer to Node.** `getNode()` in ownerRecord.ts, same shape, for `fs`
+and `path`. Two modules use it and no others; `test/hygiene.test.mjs`
+holds that allowlist.
 
 ## Lifecycle
 
 ```
 onload
   loadData -> normaliseSettings
-  addCommand x2, registerObsidianProtocolHandler, addSettingTab
-  getRemote()  -> GlobalHotkey, registerDomEvent(window, 'beforeunload')
-  await materialiseTrayIcon() -> <plugin dir>/menubar-iconTemplate.png (+ @2x), written when missing or changed
-  onLayoutReady -> applySettings()
+  NoteStore, ScratchpadWindow
+  addCommand x12 from ACTIONS, registerObsidianProtocolHandler
+  on('editor-change') -> count + debounced rename;  vault.on('rename') -> rekey
+  workspace.on('window-close') -> forget the popout
+  getRemote() -> GlobalHotkey, registerDomEvent(window, 'beforeunload')
+  await materialiseTrayIcon() -> <plugin dir>/menubar-iconTemplate.png (+ @2x)
+  ownership.start(userData, vaultPath) -> read the record, watch the directory
+  addSettingTab
+  onLayoutReady -> adoptRestoredWindow(); applySettings()
 
-applySettings   (load, and after every settings change)
-  chord = ownsMenuBar ? settings.hotkey : ''
-  chord changed?           hotkey.apply(chord): unregister(chord); ok = register(chord); Notice if !ok
+applySettings   (load, after every settings change, on an owner-record change)
+  ownership.refresh()
+  owns = settings.ownsMenuBar && ownership.mayOwn
+  chord = owns ? settings.hotkey : ''
+  chord changed?           hotkey.apply(chord): unregister; ok = register; Notice if !ok
   tray wanted?             no  -> destroyTray()
                            yes -> exists? rebuildTrayMenu() : ensureTray(trayIconPath)
 
 onunload / beforeunload
-  hotkey.release(); destroyTray()
+  hotkey.release(); destroyTray(); ownership.stop()
+  window.release()   (the popout stays open; it is Obsidian's window)
 ```
 
 `beforeunload` exists because "Reload app without saving" (Cmd-R) tears
-the renderer down without `onunload`, and a Tray or a registered chord
-in the main process would outlive it: a duplicate icon, and a chord
-whose register then returns false forever (Flint, 2026-09-09).
+the renderer down without `onunload`, and a Tray, a registered chord or
+an `fs.watch` handle in the main process would outlive it.
 
-The ownership setting gates both. `globalShortcut` and the Tray live in
-the one main process every vault window shares; without the gate, a
-second vault's unregister-before-register would take the chord from the
-first, and the first's release on unload would drop the second's live
-chord. A vault that does not own them registers nothing and holds
-nothing, so there is never a second party to collide with.
+## The window
 
-## Bringing the window forward
+`openPopoutLeaf()` returns a leaf; the container is a `WorkspaceWindow`
+with its own `win` and `doc`. Everything that must land before Obsidian's
+deferred `show()` runs synchronously on the next lines: the body class,
+the remembered bounds, `setFullScreenable(false)`,
+`setMaximizable(false)` and the always-on-top level. Then the file is
+opened, then the toolbar and the count are mounted.
 
-`obsidian://` to an already open vault does not raise the window, and a
-global hotkey fires while another app is active. Every trigger from
-outside therefore calls `bringWindowForward`: `restore()` if minimised,
-`show()`, `app.focus({ steal: true })`, `focus()`. Nothing else about
-the window is touched: no hide, no close interception, no Dock, no
-activation policy, no login item.
+`test/window.test.mjs` asserts that order as a static read of the source,
+including that there is no `await` between `openPopoutLeaf` and the
+bounds. Put one there and the member sees Obsidian's 600 by 600 minimum
+flash before the window settles.
 
-## The daily note
+Show and hide, never close. `hide()` fires no `beforeunload`, so the
+leaf, the view and the editor state stay alive and the toggle is free.
+Cmd-W is a real close and cannot be intercepted; `window-close` drops the
+reference and the next hotkey opens a fresh window on the same note. On
+relaunch Obsidian restores the popout itself, visible, with a new
+document and no marker of ours on it, so it is recognised structurally
+(a leaf in a `WorkspaceWindow` on a file in the scratchpad folder) and
+hidden.
 
-The Daily notes core plugin's folder and format cannot be read through
-the public API, so the plugin stores its own. `DailyNote.path()` is
-`normalizePath(folder/moment().format(format).md)`; `ensure()` creates
-the folder and the file when missing (and reads back on a create race);
-`append()` renders the template and writes through `Vault.process`, one
-atomic read-modify-write.
+A `Scope` carrying the actions' chords is pushed when the window takes
+focus and popped when it loses it, which is what keeps those chords out
+of the rest of Obsidian.
+
+## The notes
+
+"In the scratchpad folder" means a direct child of it. One rule
+(`NoteStore.owns`), used by the browse list, by the structural
+recognition above and by the rename, so all three cannot disagree. The
+name follows the first line: derived on `editor-change`, debounced 800
+ms, `view.save()` first so no debounced editor write lands on the old
+path, then `fileManager.renameFile` so links are updated.
+
+## Ownership
+
+One record in Electron's userData folder holds the path of the vault that
+owns the menu bar and the chord. Every vault reads it; only the vault
+whose "Make this vault the owner" button was clicked writes it, to a temp
+file that is then renamed over the target. A vault learns it lost
+ownership from an `fs.watch` on the DIRECTORY (a watcher on the file goes
+deaf after the first rename), and from a re-read on every ownership
+decision and on window focus. A missing or malformed record changes
+nothing.
+
+Obsidian's own `obsidian.json` is read only to list the vaults for the
+settings page, only on a click, and never written.
 
 ## Styling
 
-Two surfaces (the capture box, the recorder's chord badge), every value
-an Obsidian variable, every selector on `icor-qnm-`. The controls inside
-(textarea, buttons) are the host's own elements and keep the theme's
-skin; no `data-ink-plugin` boundary is declared, on purpose, so INKLINE
-and every other theme paint them as they paint Obsidian's own.
+Iris's spec, section by section. Every value is an Obsidian variable,
+every selector is anchored on `body.icor-scr-window` (the popout's own
+document) or on `.icor-scr-*`. No `.theme-dark` block and no
+`prefers-color-scheme`: a chain that ends in a host variable is correct
+in both rooms by construction. No `data-ink-plugin` boundary is declared,
+on purpose, so INKLINE and every other theme paint the few controls the
+plugin draws as they paint Obsidian's own.
 
 ## Tests
 
-`npm test` bundles the pure surface (`test/entry.ts`: accelerator,
-format, settings model, constants) and runs it under `node:test`; the
-hygiene and manifest tests read the repo as text and pin Flint's rules,
-the brief's forbidden surfaces, the class prefix, the stylesheet's
-variables-only rule and the bundle's require list. Nothing here runs
-Obsidian or Electron; the live checks are listed in the release notes.
+`npm test` bundles the pure surface (`test/entry.ts`: the action table,
+the accelerator, naming, meta, plain text, the settings model, the
+ownership shapes) and runs it under `node:test`. The rest read the repo as
+text: `hygiene` pins the forbidden surfaces, the Node allowlist and the
+stylesheet rules; `manifest` pins identity and the command table;
+`window` pins the popout's call order; `ownership` pins every finding from
+Vex's review by id. Nothing here runs Obsidian or Electron; the live
+checks are listed in the release notes.

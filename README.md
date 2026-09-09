@@ -1,16 +1,20 @@
-# ICOR for Life - Quick Notes Menu
+# ICOR for Life - Scratchpad
 
-A menu bar icon and a global hotkey you pick yourself. Press the hotkey
-in any application, or click the icon: Obsidian comes forward with a
-small capture box, you type a line, Enter, and the line lands in today's
-daily note with the time in front of it. "Open daily note" jumps to the
-note itself. An `obsidian://icor-quick-note` door does the same from
-Raycast, Alfred, Apple Shortcuts or any script.
+A small floating note window you can reach from anywhere. Press your
+hotkey in any application, or click the menu bar icon: a narrow window
+comes forward with your last note in it, ready to type. Press the hotkey
+again and it goes away. It is a real Obsidian window with a real
+markdown editor in it, so your other plugins work inside it.
+
+The note's name follows its first line. The window remembers where you
+put it. There is no separate capture box and nothing is appended to your
+daily note; this is a scratchpad, and every note in it is a normal file
+in a folder you choose.
 
 Desktop only. On macOS the icon lives in the menu bar; on Windows and
-Linux it is a system tray icon. The plugin does not hide Obsidian's
-window, does not intercept closing it, does not touch the Dock and
-does not add itself to your login items.
+Linux it is a system tray icon. The plugin does not hide Obsidian's main
+window, does not intercept closing it, does not touch the Dock and does
+not add itself to your login items.
 
 **Beta release.** If something looks off, open an issue.
 
@@ -18,30 +22,126 @@ does not add itself to your login items.
 
 - **It registers one system-wide keyboard shortcut**, the one you record
   under Settings. Nothing is registered until you do, and nothing is
-  registered in a vault where "This vault owns the menu bar and the
-  hotkey" is off. A shortcut that is already taken by another
-  application is refused and a notice says so.
-- **It puts one icon in the menu bar** (system tray on Windows and Linux),
-  with a menu of four items. Switch it off under Settings if you only want
-  the hotkey.
-- **It writes to one file:** today's daily note, resolved from the folder
-  and date format you set. It creates the note (and the folder) when
-  missing and appends one line per capture through Obsidian's atomic
-  file write. It never edits any other part of the note.
-- **It listens for one link:** `obsidian://icor-quick-note`. The `text`
-  parameter is treated as plain text and appended through the same
-  template; it is never rendered as HTML.
-- **It makes no network connection, reads no file outside your vault,
-  spawns nothing.** `SECURITY.md` names the file to read behind every
-  claim.
+  registered in a vault that does not own the menu bar. A shortcut that
+  is already taken by another application is refused and a notice says
+  so.
+- **It puts one icon in the menu bar** (system tray on Windows and
+  Linux), with a menu of three items. Switch it off under Settings if
+  you only want the hotkey.
+- **It opens one extra Obsidian window** and strips its tab strip, its
+  title row and its inline title, inside that window only. It can float
+  above other applications when you turn that on.
+- **It creates, renames and deletes notes in one folder,** the
+  scratchpad folder you pick. Deleting goes to whatever trash you have
+  configured in Obsidian, and the notice that follows carries an Undo.
+  It never touches a note outside that folder.
+- **It listens for one link:** `obsidian://icor-scratchpad`. The `text`
+  parameter is treated as plain text and becomes the body of a new note;
+  it is never rendered as HTML.
+- **It reads two files outside your vault and writes one of them.** See
+  the next section. It makes no network connection and spawns no
+  process. `SECURITY.md` names the file to read behind every claim.
+
+## Files this plugin touches outside your vault
+
+The menu bar icon and the global shortcut live in the one desktop
+process that every open vault shares, so exactly one vault can own them.
+To settle that without guessing, this plugin reads and writes two files
+in Obsidian's own application-support folder, outside every vault:
+
+- `~/Library/Application Support/obsidian/obsidian.json` (read only).
+  This is Obsidian's own list of the vaults on this Mac. The plugin
+  reads it so the settings screen can show you your other vaults and
+  which one owns the menu bar. It is never written: Obsidian rewrites
+  that file itself, and a plugin edit would be lost or would damage your
+  vault list. It is read only when you click **Show other vaults**,
+  never at startup.
+- `~/Library/Application Support/obsidian/icor-for-life-scratchpad-owner.json`
+  (read and write). One small record naming the vault that owns the menu
+  bar icon and the global shortcut. It holds that vault's folder path,
+  its name and a timestamp, and nothing else. It is written only when
+  you click "Make this vault the owner". It stays on this Mac and is
+  never synced or sent anywhere.
+
+Nothing is written into any other vault's folder, and no note content,
+no setting of yours and no file of yours leaves this machine. This
+plugin still makes no network connection and spawns no process.
+
+## The window
+
+The hotkey, the menu bar item and the `obsidian://` link all bring the
+window forward. Pressing the hotkey while the window is in front puts it
+away again; so does Escape. Cmd-W really closes it, and the next press
+of the hotkey opens it again on the same note.
+
+**The toolbar** is the pill at the top right, and it is also the window's
+drag handle (the title bar is hidden, so something has to be):
+
+| Glyph | Does |
+| --- | --- |
+| Anchor | Always on top, on and off. It turns the accent colour when it is on |
+| Command | The actions palette |
+| Files | Browse notes |
+| Plus | A new note |
+
+**The count** at the bottom centre is the number of characters in the
+note, updated as you type.
+
+**Always on top** makes the window float above other applications. It is
+off by default. Obsidian's own Window menu has the same toggle, and the
+anchor follows whichever one you used. Maximising the window or taking it
+fullscreen clears the flag, which is Obsidian's behaviour, not ours; the
+plugin turns it back on the next time the window is shown.
+
+## The notes
+
+Every note is a normal markdown file directly inside your scratchpad
+folder (`00 Daily Scratchpad` by default, changeable under Settings). A
+note you move into a subfolder has left the scratchpad.
+
+**The name follows the first line.** Type a first line and the file is
+renamed to match it, about a second after you stop typing. Characters
+that Obsidian or Windows refuse in a file name become spaces, a name that
+already exists gets " 2", and an empty first line leaves the name alone.
+Links to the note are updated, because the rename goes through Obsidian's
+own rename.
+
+**Browse notes** lists every note in the folder, pinned ones first, with
+when you last opened it and how long it is. Hover a row, or select it
+with the arrow keys, and you get pin and delete. Delete goes to your
+configured trash and the notice carries an Undo.
+
+## The actions palette
+
+Every row has a real command behind it, and every command is also in
+Obsidian's own command palette and hotkeys page, so you can bind your own
+keys to any of them.
+
+| Action | In the window |
+| --- | --- |
+| New note | Cmd-N |
+| Duplicate note | Cmd-D |
+| Pin note / Unpin note | Shift-Cmd-P |
+| Browse notes | Cmd-P |
+| Toggle always on top | Shift-Cmd-A |
+| Find in note | Cmd-F |
+| Copy note as Markdown | Shift-Cmd-C |
+| Copy note as plain text | Option-Cmd-C |
+| Open in main window | Shift-Cmd-O |
+| Delete note | Shift-Cmd-Backspace |
+
+Those chords are live **only while the scratchpad window has focus**, and
+they are released the moment it loses focus, so they take nothing away
+from the rest of Obsidian or from any other application. On Windows and
+Linux, Cmd is Ctrl. The palette itself is Cmd-K.
 
 ## The hotkey is yours to pick
 
-There is no default. Open Settings, ICOR for Life - Quick Notes Menu,
-click **Record hotkey**, press the chord you want (for example
-Shift-Cmd-F), and it is registered at once. The chord is shown the way
-Electron reads it, `Shift+CommandOrControl+F`, and you can also type or
-edit that string by hand in the row below. **Clear** removes it.
+There is no default. Open Settings, ICOR for Life - Scratchpad, click
+**Record hotkey**, press the chord you want (for example Shift-Cmd-F),
+and it is registered at once. The chord is shown the way Electron reads
+it, `Shift+CommandOrControl+F`, and you can also type or edit that string
+by hand in the row below. **Clear** removes it.
 
 Rules the recorder enforces:
 
@@ -55,98 +155,49 @@ stored chord means Ctrl on a Windows or Linux machine you later open the
 vault on. Control on macOS stays `Control`.
 
 If the chord is taken by another application, the plugin shows a notice
-and holds nothing. Pick a different one. With several vaults open, the
-hotkey belongs to the one vault that owns the menu bar (see below); the
-others never register it.
+and holds nothing. Pick a different one.
 
-## The daily note settings must match your Daily notes plugin
+## Several vaults
 
-Obsidian has no public way for a plugin to read the Daily notes core
-plugin's folder and date format, so this plugin keeps its own copy of
-both. Set them once under Settings, ICOR for Life - Quick Notes Menu, to
-the same values you have under Settings, Daily notes:
+The icon and the hotkey live in the one desktop process every open vault
+shares, so exactly one vault owns them. Which one is written in the owner
+record described above, and the settings page shows you the answer.
 
-- **Daily note folder**, relative to the vault, empty for the root.
-- **Date format**, a moment format, `YYYY-MM-DD` by default. A nested
-  folder per month is fine: folder `Journal` and format `YYYY/MM/YYYY-MM-DD`
-  yields `Journal/2026/09/2026-09-09.md`.
+- **This vault owns the menu bar and the hotkey** is the per-vault
+  switch. Off means this vault shows no icon and registers no hotkey.
+- When the record names a different vault, a line in the settings says
+  so, with a **Make this vault the owner** button. Clicking it writes the
+  record; the other vault notices within a moment and lets go of both.
+- If the record is missing or unreadable, nothing changes and the
+  settings page says so. The plugin never claims ownership on its own.
 
-If they differ, captures go into a second note next to the one the Daily
-notes plugin opens. Nothing is lost; it is just the wrong file.
-
-**Append template**, `- {{time}} {{text}}` by default: `{{text}}` is the
-line you typed, `{{time}}` the time as `HH:mm`. A capture always starts
-on its own line and the file always ends with one newline. A multi-line
-capture (Shift-Enter in the box) keeps its line breaks.
-
-## The capture box
-
-Enter adds the text to today's daily note and closes the box. Shift-Enter
-starts a new line. Escape cancels. **Add to daily note** and **Open daily
-note** are the two buttons; the second opens the note in the workspace
-without saving anything.
-
-Both actions are also commands, so they work through Obsidian's own
-hotkeys and the command palette inside Obsidian:
-
-| Command | Does |
-| --- | --- |
-| Quick note | Opens the capture box |
-| Open daily note | Opens today's daily note, creating it if needed |
-
-Neither command carries a default hotkey. The global chord is the one you
-record; an Obsidian hotkey on "Quick note" works only while Obsidian is
-the active app.
-
-## The menu bar icon
-
-The icon is a template image, so macOS tints it for the light and dark
-menu bar. The plugin writes it into its own folder at load as
-`menubar-iconTemplate.png` (plus `@2x`); the `Template` suffix is what
-tells macOS to tint it. Its menu:
-
-- **ICOR for Life - Quick Notes Menu** (a header, not clickable)
-- **Quick note**, with your recorded chord shown beside it
-- **Open daily note**
-- **Settings**, which opens this plugin's settings page
-
-A click opens the menu on macOS. On Windows and Linux the icon sits in
-the system tray with the same menu.
-
-**Several vaults.** The icon and the hotkey live in the one desktop
-process every open vault shares, so exactly one vault must own them.
-Switch **This vault owns the menu bar and the hotkey** off in every
-other vault: a vault that does not own them shows no icon and registers
-no hotkey. Leaving it on in two vaults would have each one take the
-chord from the other.
-
-**Show menu bar icon** turns the icon off while keeping the hotkey (in
-the owning vault).
+The window itself is per vault and needs none of this: every vault can
+have its own scratchpad window, opened from that vault's own command.
 
 ## The `obsidian://` door
 
 ```
-obsidian://icor-quick-note?vault=<vault name>&text=<url-encoded text>
+obsidian://icor-scratchpad?vault=<vault name>&text=<url-encoded text>
 ```
 
-With `text`, the line is appended to today's daily note at once and
-Obsidian comes to the front. Without `text`, the capture box opens
-empty. The vault name is the folder name of your vault as Obsidian shows
-it; it must be URL-encoded (`My%20Vault`).
+With `text`, a new note is created with that text and the window comes
+forward. Without `text`, the window just comes forward. The vault name is
+the folder name of your vault as Obsidian shows it; it must be
+URL-encoded (`My%20Vault`).
 
 **Raycast** (Script Command, Bash):
 
 ```bash
 #!/bin/bash
 # @raycast.schemaVersion 1
-# @raycast.title Quick note
+# @raycast.title Scratchpad note
 # @raycast.mode silent
 # @raycast.argument1 { "type": "text", "placeholder": "note" }
-open "obsidian://icor-quick-note?vault=My%20Vault&text=$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1]))' "$1")"
+open "obsidian://icor-scratchpad?vault=My%20Vault&text=$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1]))' "$1")"
 ```
 
 **Apple Shortcuts:** an "Ask for Input" action, then "URL" with
-`obsidian://icor-quick-note?vault=My%20Vault&text=` followed by the
+`obsidian://icor-scratchpad?vault=My%20Vault&text=` followed by the
 "Provided Input" variable with "URL Encode" applied, then "Open URLs".
 
 **Alfred:** a Keyword input feeding an "Open URL" action with the same
@@ -154,31 +205,30 @@ URL and `{query}` in place of the text; tick "Encode {query}".
 
 ## Settings
 
-Global hotkey (Record hotkey, Clear), Hotkey as text, Daily note
-folder, Date format, Append template, This vault owns the menu bar and
-the hotkey, Show menu bar icon. Every change applies at once: the chord
-re-registers and the icon is created, rebuilt or removed. Settings
-appear in Obsidian's settings search.
+Global hotkey (Record hotkey, Clear), Hotkey as text, Scratchpad folder,
+Always on top, Window size and position (remembered automatically, with a
+button to forget it), This vault owns the menu bar and the hotkey, Show
+menu bar icon, Other vaults on this Mac. Every change applies at once.
+Settings appear in Obsidian's settings search.
 
 ## Known limits
 
-- **Built and gated without a running Obsidian.** The parts that only a
-  live vault can settle (the icon appearing once and surviving a Cmd-R
-  reload without a duplicate, the chord firing from another app and the
-  window coming forward, the capture box focusing its textarea, the
-  `obsidian://` door from Raycast and Shortcuts, the "Settings" item
-  opening the right tab, the folder picker in the settings) are the first
-  beta round's check. See `docs/releases/0.1.0.md`.
+- **Built and gated without a running Obsidian.** The parts only a live
+  vault can settle are the first beta round's check. See
+  `docs/releases/0.1.0.md`.
+- **After a restart, Obsidian brings the window back itself.** The plugin
+  recognises it and hides it, so it does not appear over your screen at
+  every launch; your hotkey brings it back. You may see it for an instant
+  during startup.
+- **Window frame style "native".** With that setting Obsidian gives the
+  popout an operating-system title bar, which is outside the page and
+  cannot be removed by a plugin. Everything else works.
 - **The icon is baked into `main.js`.** `assets/menubar-icon.png` (16x16)
   and `assets/menubar-icon@2x.png` (32x32), black plus alpha, are the
   source of truth and are embedded at build time, so a three-file install
   shows the icon; changing it means a rebuild.
-- **No rich popover under the icon.** The menu is a native menu; the
-  capture box is an Obsidian modal in the vault window. A popover is a
-  later phase.
-- **The hotkey is system-wide.** A chord another app already holds
-  cannot be taken; the plugin says so rather than steal it.
-- **The daily note settings are a copy**, see above.
+- **The hotkey is system-wide.** A chord another app already holds cannot
+  be taken; the plugin says so rather than steal it.
 - **Not on mobile.** The manifest says so; the plugin does not load
   there.
 
@@ -191,7 +241,7 @@ npm run gate        # typecheck, build, lint (the directory's scanner), tests
 ```
 
 Copy `main.js`, `manifest.json` and `styles.css` into
-`<vault>/.obsidian/plugins/icor-for-life-quick-notes-menu/` and enable the
+`<vault>/.obsidian/plugins/icor-for-life-scratchpad/` and enable the
 plugin under Settings, Community plugins. `docs/architecture.md` has the
 module map.
 

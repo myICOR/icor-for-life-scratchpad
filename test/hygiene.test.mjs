@@ -1,5 +1,5 @@
 /* Text properties of the repo: what the directory's scanner reads, what
- * Flint's Electron rules require, what the brief forbids, and what the
+ * Flint's Electron rules require, what Vex's review requires, and what the
  * team's hard rules say. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -32,6 +32,12 @@ const textFiles = ['README.md', 'SECURITY.md', 'THIRD-PARTY-NOTICES.md', 'CHANGE
 const sources = walk(resolve(repo, 'src'), ['.ts']);
 const rel = (f) => f.slice(repo.length + 1);
 
+/* Node's fs and path, and the name of the config folder, are allowed in
+   exactly these two modules and nowhere else: everything cross-vault lives
+   behind them, so the review surface stays two files wide. Adding a third
+   is a Vex gate (Vex M-6, 2026-09-09). */
+const NODE_ALLOWED = new Set(['src/electron/ownerRecord.ts', 'src/electron/vaultRegistry.ts']);
+
 test('no em dash or en dash anywhere in the repo text', () => {
   const hits = [];
   for (const f of textFiles) {
@@ -42,6 +48,18 @@ test('no em dash or en dash anywhere in the repo text', () => {
   assert.deepEqual(hits, [], `dashes at:\n  ${hits.join('\n  ')}`);
 });
 
+test('nothing of the dropped daily-note plugin is left in the tree', () => {
+  /* src/ only: test/settings.test.mjs names the old keys on purpose, to
+     assert that a data.json carrying them normalises them away. */
+  for (const f of sources) {
+    const text = readFileSync(f, 'utf8');
+    assert.doesNotMatch(text, /dailyFolder|dailyFormat|appendTemplate|CaptureModal|DailyNote|quick-notes-menu|icor-qnm-/, `${rel(f)} still carries the daily-note plugin`);
+  }
+  for (const gone of ['src/daily', 'src/capture', 'test/daily.test.mjs']) {
+    assert.throws(() => statSync(resolve(repo, gone)), `${gone} still exists`);
+  }
+});
+
 test('the brief\'s forbidden Electron surfaces are absent, and unregisterAll is never called', () => {
   const banned = [
     [/\bunregisterAll\b/, 'globalShortcut.unregisterAll (the process is shared)'],
@@ -49,7 +67,6 @@ test('the brief\'s forbidden Electron surfaces are absent, and unregisterAll is 
     [/setActivationPolicy/, 'the activation policy'],
     [/setLoginItemSettings/, 'login items'],
     [/internalPlugins/, 'app.internalPlugins'],
-    [/app\.commands\b|\.commands\./, 'app.commands'],
     [/'close'|"close"/, 'window close interception'],
     [/preventDefault\(\)\s*;?\s*\/\/\s*close/, 'window close interception'],
   ];
@@ -73,9 +90,11 @@ test('main-process state is released on unload and on beforeunload, and the tray
   const main = strip(read('src/main.ts'));
   assert.match(main, /registerDomEvent\(window, 'beforeunload'/, 'Cmd-R reload skips onunload');
   assert.match(main, /onunload\(\): void \{\s*this\.releaseMainProcessState\(\);/);
-  const release = main.slice(main.indexOf('private releaseMainProcessState'), main.indexOf('private openCapture'));
-  assert.match(release, /hotkey\?\.release\(\)/);
-  assert.match(release, /destroyTray\(\)/);
+  const release = main.slice(main.indexOf('private releaseMainProcessState'));
+  const body = release.slice(0, release.indexOf('\n  }'));
+  assert.match(body, /hotkey\?\.release\(\)/);
+  assert.match(body, /destroyTray\(\)/);
+  assert.match(body, /ownership\.stop\(\)/, 'the record watcher outlives the renderer too (Vex L-5)');
   const tray = strip(read('src/electron/tray.ts'));
   assert.match(tray, /^let tray: Tray \| null = null;/m, 'the Tray reference is module-level, not on the plugin instance');
   assert.match(tray, /t\.destroy\(\)/);
@@ -89,8 +108,10 @@ test('the tray menu label never registers its accelerator, and no click handler 
 
 test('the hotkey is gated by ownership and re-applied only when the chord changes', () => {
   const main = strip(read('src/main.ts'));
-  assert.match(main, /const wantedChord = this\.settings\.ownsMenuBar \? this\.settings\.hotkey : ''/);
+  assert.match(main, /const owns = this\.ownsMainProcessState\(\)/);
+  assert.match(main, /const wantedChord = owns \? this\.settings\.hotkey : ''/);
   assert.match(main, /if \(wantedChord !== this\.appliedChord\)/);
+  assert.match(main, /return this\.settings\.ownsMenuBar && this\.ownership\.state\.mayOwn/, 'both this vault and the record must say yes');
 });
 
 test('protocol text is plain text: no innerHTML, no outerHTML, no insertAdjacentHTML anywhere', () => {
@@ -117,30 +138,61 @@ test('the plugin touches no private surface and no global it should not', () => 
   ];
   for (const f of sources) {
     const text = strip(readFileSync(f, 'utf8'));
-    for (const [re, what] of banned) assert.doesNotMatch(text, re, `${rel(f)} uses ${what}`);
+    for (const [re, what] of banned) {
+      if (NODE_ALLOWED.has(rel(f)) && (what === 'a Node module' || what.startsWith('a hardcoded config path'))) continue;
+      assert.doesNotMatch(text, re, `${rel(f)} uses ${what}`);
+    }
   }
 });
 
-test('the one reach past the public API is app.setting, guarded, in main.ts only', () => {
+test('the Node allowlist names files that exist, and only those two ever reach fs', () => {
+  for (const f of NODE_ALLOWED) assert.ok(sources.includes(resolve(repo, f)), `${f} is allowlisted but does not exist`);
+  for (const f of sources) {
+    if (NODE_ALLOWED.has(rel(f))) continue;
+    const text = strip(readFileSync(f, 'utf8'));
+    assert.doesNotMatch(text, /\bfs\.(read|write|open|stat|watch|rename|unlink|realpath|close|fstat)/, `${rel(f)} reaches fs outside the allowlist`);
+  }
+  /* And the two that are allowed really do it through the guarded window
+     require, never through a bundled import that esbuild would resolve. */
+  const owner = read('src/electron/ownerRecord.ts');
+  assert.match(owner, /import type \* as FsModule from 'node:fs'/, 'types only');
+  assert.match(owner, /w\.require\?\.\('fs'\)/, 'the module comes from the host at runtime');
+  assert.doesNotMatch(owner.replace(/import type[^\n]*\n/g, ''), /^import .*from '(node:)?fs'/m, 'no value import of fs');
+});
+
+test('the two reaches past the public API are app.setting and app.commands, both guarded, both in main.ts', () => {
   for (const f of sources) {
     const text = strip(readFileSync(f, 'utf8'));
     if (f.endsWith('/main.ts')) {
       assert.match(text, /typeof setting\.open === 'function' && typeof setting\.openTabById === 'function'/);
+      assert.match(text, /typeof commands\.executeCommandById === 'function'/);
+      assert.match(text, /new Notice\('This action needs a command this build does not have\.'\)/, 'a changed shape degrades to a notice');
       continue;
     }
-    assert.doesNotMatch(text, /openTabById|\.setting\b/, rel(f));
+    assert.doesNotMatch(text, /openTabById|\.setting\b|executeCommandById/, rel(f));
   }
 });
 
-test('every class the plugin adds carries the icor-qnm- prefix', () => {
+test('every class the plugin adds carries the icor-scr- prefix', () => {
+  /* The only literal classes allowed are Obsidian's own, which the plugin
+     borrows rather than styles. */
+  const HOST_CLASSES = new Set(['mod-cta', 'clickable-icon']);
   for (const f of sources) {
     const text = readFileSync(f, 'utf8');
     for (const m of text.matchAll(/(?:addClass|toggleClass)\(\s*`\$\{CLASS_PREFIX\}([a-z-]+)`/g)) assert.match(m[1], /^[a-z-]+$/);
     for (const m of text.matchAll(/(?:addClass|cls:)\s*\(?\s*'([^']+)'/g)) {
-      assert.ok(m[1] === 'mod-cta', `${rel(f)}: literal class ${m[1]} (only Obsidian's own mod-cta may be literal)`);
+      for (const cls of m[1].split(/\s+/)) assert.ok(HOST_CLASSES.has(cls), `${rel(f)}: literal class ${cls}`);
+    }
+    /* A class written as a template literal is where the prefix could be
+       skipped quietly, so every word in one is checked too. */
+    for (const m of text.matchAll(/cls:\s*`([^`]+)`/g)) {
+      for (const word of m[1].split(/\s+/)) {
+        if (word === '' || word.includes('${CLASS_PREFIX}')) continue;
+        assert.ok(HOST_CLASSES.has(word.replace(/\$\{[^}]*\}/g, '')), `${rel(f)}: unprefixed class ${word}`);
+      }
     }
   }
-  assert.equal(strip(read('src/constants.ts')).match(/CLASS_PREFIX = '([^']+)'/)[1], 'icor-qnm-');
+  assert.equal(strip(read('src/constants.ts')).match(/CLASS_PREFIX = '([^']+)'/)[1], 'icor-scr-');
 });
 
 test('the stylesheet: prefixed selectors, Obsidian variables only, no hex, no pixel, no !important', () => {
@@ -148,8 +200,13 @@ test('the stylesheet: prefixed selectors, Obsidian variables only, no hex, no pi
   assert.doesNotMatch(css, /#[0-9a-f]{3,8}\b/i, 'a hex colour');
   assert.doesNotMatch(css, /!important/);
   assert.doesNotMatch(css, /\d(px|em|rem)\b/, 'a literal length; sizes come from --size-* and --radius-*');
+  assert.doesNotMatch(css, /\.theme-dark|prefers-color-scheme/, 'the window follows Obsidian; a room block means a literal appeared first');
   for (const m of css.matchAll(/([^{}]+)\{/g)) {
-    for (const selector of m[1].split(',')) assert.match(selector.trim(), /^\.icor-qnm-/, `selector ${selector.trim()} is not on the prefix`);
+    for (const selector of m[1].split(',')) {
+      const s = selector.trim();
+      if (s === '') continue;
+      assert.match(s, /^(\.icor-scr-|body\.icor-scr-window\b)/, `selector ${s} is not anchored on the plugin`);
+    }
   }
   for (const m of css.matchAll(/(color|background[a-z-]*|font-family|font-size|border-radius|border-color|padding|gap|min-width|min-height)\s*:\s*([^;]+);/g)) {
     assert.match(m[2].trim(), /^var\(--|^calc\(|^\d+$/, `${m[1]}: ${m[2].trim()} is not an Obsidian variable`);
@@ -177,7 +234,7 @@ test('no literal colour anywhere in src; the icon is the embedded PNG, handed to
   }
 });
 
-test('the built plugin requires obsidian only and reaches Electron through window.require at runtime', () => {
+test('the built plugin requires obsidian only and reaches Electron and Node through window.require at runtime', () => {
   const main = read('main.js');
   const requires = [...main.matchAll(/require\("([^"]+)"\)/g)].map((m) => m[1]);
   assert.deepEqual([...new Set(requires)], ['obsidian']);
