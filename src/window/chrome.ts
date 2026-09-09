@@ -9,11 +9,18 @@
  *    `document`: that is the main window's, always, and a popout is a
  *    separate realm. This is the same reason `instanceof HTMLElement` is
  *    false across windows.
- * 2. The pill is the window's drag handle. Hiding the title bar and the tab
- *    header removes both of Obsidian's -webkit-app-region: drag regions
- *    (Flint point 5, trap A), so styles.css puts the drag region on the pill
- *    and takes it off the buttons. Without that the member cannot move the
- *    window at all. */
+ * 2. The window's drag handle is the strip this module mounts first, not the
+ *    pill. Hiding the title bar and the tab header removes both of
+ *    Obsidian's -webkit-app-region: drag regions (Flint point 5, trap A), so
+ *    the plugin has to put one back. The first build put it on the pill:
+ *    that is a hundred and thirty pixels in the top right corner with no
+ *    affordance on it, and Tom read the window as one that cannot be moved
+ *    at all (live test, 2026-09-09). So the drag region is now the whole
+ *    reserved top band, full width, behind the pill, and the buttons and the
+ *    inline title are marked no-drag on top of it. The popout is created
+ *    frameless with titleBarStyle "hidden" (main.js: frame is false unless
+ *    the member picked the native frame, titleBarStyle is then "hidden"),
+ *    which is the condition an app-region drag needs. */
 import { setIcon, setTooltip } from 'obsidian';
 import { ACTION_BROWSE_NOTES, ACTION_NEW_NOTE, ACTION_OPEN_ACTIONS, ACTION_TOGGLE_ALWAYS_ON_TOP } from '../actions/table';
 import { CLASS_PREFIX } from '../constants';
@@ -46,6 +53,11 @@ export interface Chrome {
 }
 
 export function mountChrome(doc: Document, onAction: (action: string) => void): Chrome {
+  /* First, so it sits under the pill in paint order as well as in z-index.
+     aria-hidden and no tab stop: it is a window control for the mouse, and
+     a keyboard user moves a window with the system's own gesture. */
+  const dragbar = doc.body.createDiv({ cls: `${CLASS_PREFIX}dragbar`, attr: { 'aria-hidden': 'true' } });
+
   const toolbar = doc.body.createDiv({ cls: `${CLASS_PREFIX}toolbar`, attr: { role: 'toolbar', 'aria-label': 'Scratchpad actions' } });
 
   let anchorEl: HTMLElement | null = null;
@@ -81,6 +93,7 @@ export function mountChrome(doc: Document, onAction: (action: string) => void): 
       count.setText(characterCountText(characters));
     },
     destroy(): void {
+      dragbar.remove();
       toolbar.remove();
       footer.remove();
     },

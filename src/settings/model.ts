@@ -23,6 +23,14 @@ export interface ScratchpadSettings {
   hotkey: string;
   /* Folder the scratchpad notes live in, vault-relative, '' = vault root. */
   scratchpadFolder: string;
+  /* Moment format for the dated subfolder a NEW note is filed into, under
+     the scratchpad folder. '' means no subfolder. Slashes are folder
+     levels, so YYYY/MM is two of them. */
+  subfolderFormat: string;
+  /* Moment format for a new note's name. The default is what the core
+     Unique note creator writes, so a note made here and a note made there
+     are named the same way. */
+  newNoteFormat: string;
   /* The window floats above other applications. */
   alwaysOnTop: boolean;
   /* Where the window was last, or null before it has ever been opened. */
@@ -45,10 +53,14 @@ export interface ScratchpadSettings {
 export const DEFAULT_WINDOW_SIZE = { width: 480, height: 640 } as const;
 
 export const DEFAULT_SCRATCHPAD_FOLDER = '00 Daily Scratchpad';
+export const DEFAULT_SUBFOLDER_FORMAT = 'YYYY/MM';
+export const DEFAULT_NEW_NOTE_FORMAT = 'YYYYMMDDHHmm';
 
 export const DEFAULT_SETTINGS: ScratchpadSettings = {
   hotkey: '',
   scratchpadFolder: DEFAULT_SCRATCHPAD_FOLDER,
+  subfolderFormat: DEFAULT_SUBFOLDER_FORMAT,
+  newNoteFormat: DEFAULT_NEW_NOTE_FORMAT,
   alwaysOnTop: false,
   bounds: null,
   ownsMenuBar: true,
@@ -108,6 +120,12 @@ export function normaliseSettings(raw: unknown): ScratchpadSettings {
        registered: a bad string reaches globalShortcut as a thrown error. */
     hotkey: hotkey && validateAccelerator(hotkey) === null ? normaliseAccelerator(hotkey) : '',
     scratchpadFolder: cleanFolder(str(r.scratchpadFolder, DEFAULT_SETTINGS.scratchpadFolder)),
+    /* A subfolder format is a folder path, so it is cleaned the same way;
+       empty is a real answer and means "straight into the folder". */
+    subfolderFormat: cleanFolder(str(r.subfolderFormat, DEFAULT_SETTINGS.subfolderFormat)),
+    /* An empty name format is not a real answer: every note would be
+       called Untitled, Untitled 2, Untitled 3. It falls back. */
+    newNoteFormat: str(r.newNoteFormat, DEFAULT_SETTINGS.newNoteFormat).trim() || DEFAULT_SETTINGS.newNoteFormat,
     alwaysOnTop: bool(r.alwaysOnTop, DEFAULT_SETTINGS.alwaysOnTop),
     bounds: normaliseBounds(r.bounds),
     ownsMenuBar: bool(r.ownsMenuBar, DEFAULT_SETTINGS.ownsMenuBar),

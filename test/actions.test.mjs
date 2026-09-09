@@ -2,7 +2,7 @@
  * rows. If a chip and a chord could disagree, this file is where it shows. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ACTIONS, PALETTE_ACTIONS, actionById, chordGlyphs } from './build/pure.mjs';
+import { ACTIONS, PALETTE_ACTIONS, actionById, chordCode, chordGlyphs, matchChord } from './build/pure.mjs';
 
 test('ids are bare, unique, and never name the plugin or the word command', () => {
   const ids = ACTIONS.map((a) => a.id);
@@ -113,4 +113,89 @@ test('the two rows that carry no chord are the two that should not', () => {
     if (action.id === 'find-in-note') continue;
     assert.ok(action.chord, `${action.id} has no chord`);
   }
+});
+
+
+/* The matcher. This is the half that Obsidian's own Scope got wrong: it
+   compares the registered key against event.key, and on macOS Option
+   rewrites event.key to the composed character, so not one of the Option
+   chords in this table could ever fire (Tom's live test, 2026-09-09). The
+   matcher reads event.code, the physical key. */
+const press = (over) => ({ code: 'KeyN', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, repeat: false, isComposing: false, ...over });
+
+/* The event macOS really delivers for a chord, built from the table itself
+   so a new chord is covered the moment it is added. */
+const eventFor = (chord) => press({
+  code: chordCode(chord),
+  metaKey: chord.mods.includes('Mod'),
+  altKey: chord.mods.includes('Alt'),
+  shiftKey: chord.mods.includes('Shift'),
+  ctrlKey: chord.mods.includes('Ctrl'),
+});
+
+test('every chord in the table matches its own keydown, on macOS and off it', () => {
+  for (const action of ACTIONS) {
+    if (!action.chord) continue;
+    const mac = eventFor(action.chord);
+    assert.equal(matchChord(mac, true)?.id, action.id, `${action.id} does not match its own event on macOS`);
+    /* Off macOS the same chord arrives with Control where Command was. */
+    const other = { ...mac, metaKey: false, ctrlKey: mac.metaKey || mac.ctrlKey };
+    assert.equal(matchChord(other, false)?.id, action.id, `${action.id} does not match its own event off macOS`);
+  }
+});
+
+test('the Option chords are exactly the ones event.key would have lost', () => {
+  /* Option-N is "Dead" in event.key, Option-C is a c-cedilla, Option-P is a
+     pi. The matcher never reads event.key, so the code below is all it
+     needs and the composed character cannot get in the way. */
+  const optionChords = ACTIONS.filter((a) => a.chord?.mods.includes('Alt'));
+  assert.ok(optionChords.length >= 3, 'the table still carries Option chords');
+  for (const action of optionChords) {
+    assert.equal(matchChord(eventFor(action.chord), true)?.id, action.id);
+  }
+});
+
+test('the matcher never reads event.key, which is the field macOS rewrites', () => {
+  const chord = actionById('new-note').chord;
+  /* What the keyboard really delivers for Option-Command-N on a Mac: the
+     code is still KeyN, the key is the dead accent. Obsidian's Scope reads
+     the second one, which is why the chip said Option-Command-N and nothing
+     happened (Tom, defect 2). */
+  assert.equal(matchChord({ ...eventFor(chord), key: 'Dead' }, true)?.id, 'new-note');
+  assert.equal(matchChord({ ...eventFor(chord), key: '\u02dc' }, true)?.id, 'new-note');
+  /* And the other direction: a key that says N on a physical key that is
+     not N is not the chord. */
+  assert.equal(matchChord({ ...eventFor(chord), code: 'Digit1', key: 'N' }, true), null);
+});
+
+test('a key that is not in the table is left completely alone', () => {
+  /* The search bar needs Enter and the arrows to walk its matches; the
+     first build swallowed them and the find bar could not be navigated
+     (Tom, defect 5). */
+  for (const code of ['Enter', 'ArrowDown', 'ArrowUp', 'Tab', 'Escape', 'Space', 'KeyZ']) {
+    assert.equal(matchChord(press({ code }), true), null, `${code} bare`);
+    assert.equal(matchChord(press({ code, metaKey: true }), true), null, `${code} with Command`);
+    assert.equal(matchChord(press({ code, metaKey: true, shiftKey: true }), true), null, `${code} with Shift Command`);
+  }
+});
+
+test('the modifier match is exact, so a member chord with one extra key is untouched', () => {
+  const chord = ACTIONS.find((a) => a.chord)?.chord;
+  const base = eventFor(chord);
+  assert.ok(matchChord(base, true));
+  assert.equal(matchChord({ ...base, ctrlKey: true }, true), null, 'one extra modifier is a different chord');
+  assert.equal(matchChord({ ...base, shiftKey: !base.shiftKey }, true), null);
+  assert.equal(matchChord({ ...base, metaKey: false }, true), null);
+});
+
+test('a composing key and an auto-repeat are never an action', () => {
+  const chord = ACTIONS.find((a) => a.chord)?.chord;
+  assert.equal(matchChord({ ...eventFor(chord), isComposing: true }, true), null);
+  assert.equal(matchChord({ ...eventFor(chord), repeat: true }, true), null);
+});
+
+test('a letter chord names a KeyX code and a named key names itself', () => {
+  assert.equal(chordCode({ mods: ['Mod'], key: 'N' }), 'KeyN');
+  assert.equal(chordCode({ mods: ['Mod'], key: 'c' }), 'KeyC');
+  assert.equal(chordCode({ mods: ['Mod'], key: 'Backspace' }), 'Backspace');
 });

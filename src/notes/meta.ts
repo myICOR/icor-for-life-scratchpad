@@ -48,6 +48,11 @@ export interface NoteRow {
   readonly title: string;
   readonly characters: number;
   readonly lastOpened: number | null;
+  /* The file's own mtime: what the Notes group is ordered by. */
+  readonly modified: number;
+  /* The note's first non-empty line, cut to length, or ''. A note called
+     202609091812 is unrecognisable without it. */
+  readonly preview: string;
   readonly pinned: boolean;
   readonly current: boolean;
 }
@@ -56,23 +61,28 @@ export function groupOf(row: NoteRow): NoteGroup {
   return row.pinned ? GROUP_PINNED : GROUP_NOTES;
 }
 
-/* Pinned first, then the rest, each block most recently opened first and
-   never-opened notes last inside its own block. The order is stable for the
-   same input, which is what lets the group label be rendered from "the group
-   changed since the previous row" rather than from an index. */
+/* Pinned first, then the rest. The pinned block is ordered by when the
+   member last opened those notes, because a pin is their own shortlist; the
+   Notes block is ordered by when the note last CHANGED, because a scratchpad
+   is a stack and the newest thing belongs on top (Tom, 2026-09-09). The
+   order is stable for the same input, which is what lets the group label be
+   rendered from "the group changed since the previous row" rather than from
+   an index. */
 export function orderRows(rows: readonly NoteRow[]): NoteRow[] {
   return [...rows].sort((a, b) => {
     if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-    const at = a.lastOpened ?? 0;
-    const bt = b.lastOpened ?? 0;
+    const at = a.pinned ? a.lastOpened ?? 0 : a.modified;
+    const bt = b.pinned ? b.lastOpened ?? 0 : b.modified;
     if (at !== bt) return bt - at;
     return a.title.localeCompare(b.title);
   });
 }
 
-/* The second line of a browse row. The current note says so instead of
-   saying when it was opened, because it is open right now. */
+/* The second line of a browse row: the note's own first line, then when it
+   was opened and how long it is. The current note says so instead of saying
+   when it was opened, because it is open right now. */
 export function browseMetaText(row: NoteRow, now: number): string {
   const count = characterCountText(row.characters);
-  return row.current ? `Current · ${count}` : `${openedAgoText(row.lastOpened, now)} · ${count}`;
+  const when = row.current ? 'Current' : openedAgoText(row.lastOpened, now);
+  return row.preview === '' ? `${when} · ${count}` : `${row.preview} · ${when} · ${count}`;
 }

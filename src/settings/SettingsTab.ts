@@ -18,7 +18,7 @@ import { renderHotkeyRecorder } from '../hotkey/recorder';
 import { validateAccelerator } from '../hotkey/accelerator';
 import { samePath, vaultMark } from '../ownership/record';
 import type ScratchpadPlugin from '../main';
-import { DEFAULT_SCRATCHPAD_FOLDER, normaliseSettings } from './model';
+import { DEFAULT_NEW_NOTE_FORMAT, DEFAULT_SCRATCHPAD_FOLDER, DEFAULT_SUBFOLDER_FORMAT, normaliseSettings } from './model';
 import type { ScratchpadSettings } from './model';
 
 type Definitions = ReturnType<PluginSettingTab['getSettingDefinitions']>;
@@ -84,11 +84,6 @@ export class ScratchpadSettingsTab extends PluginSettingTab {
         heading: 'Window',
         items: [
           {
-            name: 'Scratchpad folder',
-            desc: 'Where the scratchpad notes live, relative to the vault. Only the notes directly in this folder are shown; a note you move into a subfolder has left the scratchpad.',
-            control: { type: 'folder', key: 'scratchpadFolder', placeholder: DEFAULT_SCRATCHPAD_FOLDER },
-          },
-          {
             name: 'Always on top',
             desc: 'The window floats above other applications. You can also toggle it from the anchor in the window itself.',
             control: { type: 'toggle', key: 'alwaysOnTop' },
@@ -105,6 +100,29 @@ export class ScratchpadSettingsTab extends PluginSettingTab {
               );
               return () => undefined;
             },
+          },
+        ],
+      },
+      {
+        type: 'group',
+        heading: 'Notes',
+        items: [
+          {
+            name: 'Scratchpad folder',
+            desc: 'Where the scratchpad notes live, relative to the vault. Every note under this folder is shown, including the ones in the dated subfolders below.',
+            control: { type: 'folder', key: 'scratchpadFolder', placeholder: DEFAULT_SCRATCHPAD_FOLDER },
+          },
+          {
+            name: 'Subfolder for new notes',
+            desc: 'A date format, the way Obsidian writes them, deciding which subfolder a new note is filed into. A slash is a folder level, so YYYY/MM files this month\'s notes into 2026/09. Leave it empty to put new notes straight into the scratchpad folder.',
+            aliases: ['folder', 'date', 'format', 'daily'],
+            control: { type: 'text', key: 'subfolderFormat', placeholder: DEFAULT_SUBFOLDER_FORMAT },
+          },
+          {
+            name: 'Name for new notes',
+            desc: 'A date format deciding what a new note is called. The default is the one the core Unique note creator uses. Rename a note afterwards by typing in its title at the top of the window; anything you add after the code is kept.',
+            aliases: ['name', 'title', 'unique', 'format'],
+            control: { type: 'text', key: 'newNoteFormat', placeholder: DEFAULT_NEW_NOTE_FORMAT },
           },
         ],
       },

@@ -24,10 +24,11 @@ src/electron/ownerRecord.ts  fs: the owner record, its directory watcher, the at
 src/electron/vaultRegistry.ts fs: Obsidian's vault list, read on a click, every path validated
 src/ownership/record.ts      pure: the shapes of both files, canonical paths, the vault mark
 src/ownership/ownership.ts   the ownership state machine over those two modules
-src/window/ScratchpadWindow.ts the popout: open, adopt, show, hide, chrome, chords, bounds
-src/window/chrome.ts         the floating toolbar and the count line inside the popout
-src/notes/store.ts           the scratchpad folder: list, create, duplicate, trash, rename from the first line
-src/notes/naming.ts          pure: sanitise a name, read a title off a first line, dedupe
+src/window/ScratchpadWindow.ts the popout: open, adopt, show, hide, chrome, chords, Escape, bounds
+src/window/chrome.ts         the drag strip, the floating toolbar and the count line inside the popout
+src/window/escape.ts         pure: what Escape means, as one ordered decision
+src/notes/store.ts           the scratchpad folder: list, target folder, create, duplicate, trash
+src/notes/naming.ts          pure: sanitise a name and a path, dedupe, the browse preview
 src/notes/meta.ts            pure: the count text, the relative time, the group order
 src/notes/plain.ts           pure: markdown to the text a reader sees
 src/modals/ActionsModal.ts   the actions palette (FuzzySuggestModal)
@@ -67,7 +68,7 @@ onload
   loadData -> normaliseSettings
   NoteStore, ScratchpadWindow
   addCommand x12 from ACTIONS, registerObsidianProtocolHandler
-  on('editor-change') -> count + debounced rename;  vault.on('rename') -> rekey
+  on('editor-change') -> count;  vault.on('rename') -> rekey the pin and the opened time
   workspace.on('window-close') -> forget the popout
   getRemote() -> GlobalHotkey, registerDomEvent(window, 'beforeunload')
   await materialiseTrayIcon() -> <plugin dir>/menubar-iconTemplate.png (+ @2x)
@@ -119,15 +120,36 @@ document and no marker of ours on it, so it is recognised structurally
 (a leaf in a `WorkspaceWindow` on a file in the scratchpad folder) and
 hidden.
 
-A `Scope` carrying the actions' chords is pushed when the window takes
-focus and popped when it loses it, which is what keeps those chords out
-of the rest of Obsidian. It parents on the active view's own scope when
-that view has one and on `app.scope` when it does not: `app.scope` is the
-keymap ROOT, while a popout's base is `workspace.scope`, which delegates
-to the view. There is no public handle on `workspace.scope`, so the view
-is the closest honest parent. Inside the window a chord genuinely shadows
-whatever core binds to it, so `test/actions.test.mjs` holds the 1.13.7
-default hotkey table and refuses a collision.
+Keys are two listeners on the popout's own document and no key scope at
+all. The first, in the capture phase, matches `KeyboardEvent.code`
+against `ACTIONS` and runs the action; it ignores every key that is not
+in the table and every key pressed inside Obsidian's find bar. The second
+handles Escape through `src/window/escape.ts`: an open find bar closes
+first, a modal or a menu keeps the key second, and only then does the
+window hide. Inside the window a matched chord genuinely shadows whatever
+core binds to it, so `test/actions.test.mjs` holds the 1.13.7 default
+hotkey table and refuses a collision.
+
+A `Scope` was the first design and it failed twice on the same day.
+`Keymap.isMatch` compares against `event.key`, which macOS rewrites under
+Option, so no Option chord could ever fire; and `pushScope` replaces the
+window's single scope pointer while `Scope.handleKey` falls through to
+its PARENT rather than down the stack, so a scope pushed over the editor
+search's own swallowed the keys the search needed. Neither is a bug in
+Obsidian and neither has a workaround inside the Scope API.
+
+Whether a find bar was open when a key went down is read from a
+`MutationObserver`, not from the DOM. Obsidian's popout event relay sits
+on the WINDOW in the capture phase and is installed by the
+`WorkspaceWindow` constructor, so the Keymap, and therefore the search's
+own Escape, always runs before any listener a plugin can attach; by then
+the container is detached. An observer callback is a microtask, so the
+flag still holds the pre-key state for the whole synchronous dispatch.
+
+Fullscreen and maximise are allowed. Both clear always-on-top and macOS
+refuses the flag while fullscreen, so it is re-applied from the SETTING
+on `leave-full-screen` and `unmaximize`, and the remembered rectangle is
+never read while the window is expanded.
 
 The window is forgotten on two signals, not one. `window-close` fires
 only when the LAST leaf leaves a popout, so a leaf dragged out of a
@@ -137,12 +159,19 @@ that.
 
 ## The notes
 
-"In the scratchpad folder" means a direct child of it. One rule
+"In the scratchpad" means anywhere UNDER the folder. One rule
 (`NoteStore.owns`), used by the browse list, by the structural
-recognition above and by the rename, so all three cannot disagree. The
-name follows the first line: derived on `editor-change`, debounced 800
-ms, `view.save()` first so no debounced editor write lands on the old
-path, then `fileManager.renameFile` so links are updated.
+recognition above and by the delete, so all three cannot disagree.
+
+A new note is filed into `<folder>/<subfolderFormat>` and named from
+`newNoteFormat`, both moment formats, `YYYY/MM` and `YYYYMMDDHHmm` by
+default, the second being what the core Unique note creator writes. Every
+missing folder segment is created in turn, and a collision inside that
+one folder gets " 2". The plugin renames nothing: the inline title is
+shown in the window, and a rename there is Obsidian's own, with its
+validation and its link updating. The browse list carries the note's
+first line as a preview, because a note called 202609091812 is not
+recognisable without one.
 
 ## Ownership
 

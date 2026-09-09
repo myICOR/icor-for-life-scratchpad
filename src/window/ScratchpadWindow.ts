@@ -20,19 +20,25 @@
  *    listens for window-close and forgets the window. On relaunch Obsidian
  *    restores the popout VISIBLE with no plugin marker on it, so it is
  *    recognised structurally instead.
- * 4. A maximize or a fullscreen entry silently clears always-on-top
- *    (Obsidian attaches handlers that do), so the window is made neither
- *    fullscreenable nor maximizable and the flag is re-applied on show. */
-import { MarkdownView, Notice, Scope, WorkspaceWindow, debounce } from 'obsidian';
-import type { App, Modifier, TFile, WorkspaceLeaf } from 'obsidian';
+ * 4. A maximize or a fullscreen entry clears always-on-top, and on macOS
+ *    the two cannot coexist at all. The first build answered that by taking
+ *    the green button away (setFullScreenable(false) plus
+ *    setMaximizable(false)), which cost Tom the thing he wanted most: a
+ *    scratchpad that can own a screen. So both are allowed again and the
+ *    clearing is handled instead: the flag is re-applied from the SETTING
+ *    on leave-full-screen, on unmaximize and on every show, and while the
+ *    window is expanded it is simply off (Tom, 2026-09-09). */
+import { MarkdownView, Notice, Platform, WorkspaceWindow, debounce } from 'obsidian';
+import type { App, TFile, WorkspaceLeaf } from 'obsidian';
 import type { BrowserWindow } from 'electron';
-import { ACTIONS } from '../actions/table';
+import { matchChord } from '../actions/table';
 import { DEFAULT_WINDOW_SIZE } from '../settings/model';
 import type { ScratchpadSettings, WindowBounds } from '../settings/model';
 import { WINDOW_CLASS } from '../constants';
 import { bringForward, getRemoteFor } from '../electron/remote';
 import type { RemoteApi } from '../electron/remote';
 import { mountChrome } from './chrome';
+import { escapeAction } from './escape';
 import type { Chrome } from './chrome';
 
 export interface WindowCallbacks {
@@ -54,6 +60,14 @@ const COUNT_PAINT_MS = 100;
 /* Long enough for a real window focus to arrive, short enough that a
    member never waits on it. */
 const FOCUS_WAIT_MS = 300;
+/* Obsidian's own editor search, which the "Find in note" row opens and the
+   member's own Cmd-F opens too. Both the source-mode and the reading-mode
+   search build this container, and the replace variant is the same element
+   with .mod-replace-mode on it, so one selector covers all three. */
+const SEARCH = '.document-search-container';
+const SEARCH_CLOSE = '.document-search-close-button';
+/* Everything else in this document that owns Escape already. */
+const OVERLAYS = '.modal-container, .suggestion-container, .menu';
 
 export class ScratchpadWindow {
   private leaf: WorkspaceLeaf | null = null;
@@ -62,14 +76,17 @@ export class ScratchpadWindow {
   private popoutRemote: RemoteApi | null = null;
   private chrome: Chrome | null = null;
   private cleanups: (() => void)[] = [];
-  /* The plugin's own chords, live only while the popout has focus. They are
-     what makes the shortcut chips in the actions palette true rather than
-     decorative, and pushing them on focus (never at window-open) is what
-     keeps them off the main window: pushScope pushes onto the stack of
-     activeWindow at call time (Flint point 8a). */
-  private scope: Scope | null = null;
-  private scopeParentUsed: Scope | null = null;
-  private scopePushed = false;
+  /* Whether a search bar was in this document when the last key went down.
+     It is deliberately read from a MutationObserver rather than from the DOM
+     at the moment Escape arrives: Obsidian's popout event relay sits on the
+     WINDOW in the capture phase and is registered in the WorkspaceWindow
+     constructor, so the clone reaches the Keymap, and the search's own
+     Escape, before any listener a plugin can attach. By the time this file
+     sees the key the container is already gone. An observer callback is a
+     microtask, so through the whole synchronous key dispatch this flag still
+     holds the state from before the key, which is the question that has to
+     be answered (Tom's live test, 2026-09-09). */
+  private searchOpen = false;
 
   private readonly saveBounds = debounce(() => this.persistBounds(), BOUNDS_SAVE_MS, true);
   private readonly paintCount = debounce(() => this.renderCount(), COUNT_PAINT_MS, true);
@@ -169,8 +186,6 @@ export class ScratchpadWindow {
       /* Partial bounds keep Obsidian's own placement on the first open and
          only overrule the 600 by 600 clamp. */
       bw.setBounds(bounds ? { ...bounds } : { ...DEFAULT_WINDOW_SIZE });
-      bw.setFullScreenable(false);
-      bw.setMaximizable(false);
       this.applyAlwaysOnTop(this.cb.settings().alwaysOnTop);
     } catch (err) {
       new Notice(`The scratchpad window could not be placed: ${err instanceof Error ? err.message : String(err)}`);
@@ -178,47 +193,63 @@ export class ScratchpadWindow {
   }
 
   /* The parts that need a document and a view: the toolbar, the count, the
-     Escape key, the window's own listeners. */
+     keys, the search watch, the window's own listeners. */
   private mount(): void {
     const wsWin = this.wsWin;
     if (!wsWin || this.chrome) return;
     this.chrome = mountChrome(wsWin.doc, (action) => this.cb.runAction(action));
     this.chrome.setAlwaysOnTop(this.readAlwaysOnTop());
     this.renderCount();
+    this.watchSearch();
 
-    /* Escape puts the window away. The relay clones popout key events to
-       the main window's Keymap first, and a preventDefault on the clone
-       forwards to the original, so an Escape a modal or a suggest already
-       consumed arrives here as defaultPrevented (Flint point 8). */
-    const onKey = (evt: KeyboardEvent): void => {
-      if (evt.key !== 'Escape' || evt.defaultPrevented) return;
+    /* The plugin's chords. One listener on the popout's own document, in the
+       capture phase, matching event.code against the table and nothing else.
+       See the header of src/actions/table.ts for why this is not a Scope.
+
+       stopPropagation stops the rest of THIS document; it cannot stop
+       Obsidian's Keymap, which already saw a clone of this event from the
+       relay on the window. That is why no chord in the table may collide
+       with a core default, and why test/actions.test.mjs holds the list. */
+    const onChord = (evt: KeyboardEvent): void => {
+      if (evt.defaultPrevented || inside(evt.target, SEARCH)) return;
+      const action = matchChord(evt, Platform.isMacOS);
+      if (!action) return;
       evt.preventDefault();
-      this.hide();
+      evt.stopPropagation();
+      this.cb.runAction(action.id);
     };
-    wsWin.doc.addEventListener('keydown', onKey);
-    this.cleanups.push(() => wsWin.doc.removeEventListener('keydown', onKey));
+    wsWin.doc.addEventListener('keydown', onChord, { capture: true });
+    this.cleanups.push(() => wsWin.doc.removeEventListener('keydown', onChord, { capture: true }));
 
-    this.scope = this.buildScope();
-    const onFocus = (): void => {
-      this.pushScope();
-      this.cb.onFocus();
+    /* Escape. The order lives in ./escape.ts and the test pins it: a search
+       bar first, then anything else that already owns the key, then the
+       window. defaultPrevented is checked first because a modal's own scope
+       returns false, which the Keymap turns into preventDefault on the
+       clone, and the clone forwards it to this event (Flint point 8). */
+    const onEscape = (evt: KeyboardEvent): void => {
+      if (evt.key !== 'Escape' || evt.defaultPrevented) return;
+      const state = {
+        searchOpen: this.searchOpen || inside(evt.target, SEARCH),
+        overlayOpen: wsWin.doc.querySelector(OVERLAYS) !== null,
+      };
+      switch (escapeAction(state)) {
+        case 'close-search':
+          evt.preventDefault();
+          this.closeSearch();
+          return;
+        case 'yield':
+          return;
+        default:
+          evt.preventDefault();
+          this.hide();
+      }
     };
-    const onBlur = (): void => this.popScope();
+    wsWin.doc.addEventListener('keydown', onEscape);
+    this.cleanups.push(() => wsWin.doc.removeEventListener('keydown', onEscape));
+
+    const onFocus = (): void => this.cb.onFocus();
     wsWin.win.addEventListener('focus', onFocus);
-    wsWin.win.addEventListener('blur', onBlur);
-    this.cleanups.push(() => {
-      wsWin.win.removeEventListener('focus', onFocus);
-      wsWin.win.removeEventListener('blur', onBlur);
-      this.popScope();
-    });
-    /* pushScope pushes onto activeWindow, not onto wsWin.win. In the normal
-       sequence they are the same window, because Obsidian's own focus
-       listener is registered in the WorkspaceWindow constructor and runs
-       first. In a race they are not, and the chords sit on the main
-       window's stack for a moment. It self-heals: popScope reads scope.win,
-       set at push time, not activeWindow, so nothing is ever stranded. Do
-       not "fix" popScope to read activeWindow (Flint, 2026-09-09). */
-    if (wsWin.doc.hasFocus()) this.pushScope();
+    this.cleanups.push(() => wsWin.win.removeEventListener('focus', onFocus));
 
     const bw = this.bw;
     if (!bw) return;
@@ -226,8 +257,19 @@ export class ScratchpadWindow {
       this.saveBounds();
     };
     const onTopChanged = (): void => this.chrome?.setAlwaysOnTop(this.readAlwaysOnTop());
+    /* Fullscreen and maximize clear always-on-top, and on macOS a window
+       cannot be both. So the flag is not fought while the window is
+       expanded; it is put back from the SETTING the moment it comes back,
+       which is also what show() does. Reading the setting rather than the
+       window is the point: the window's own answer while expanded is false,
+       and restoring false would lose the member's choice. */
+    const onRestored = (): void => this.applyAlwaysOnTop(this.cb.settings().alwaysOnTop);
     bw.on('resize', onGeometry);
     bw.on('move', onGeometry);
+    bw.on('leave-full-screen', onRestored);
+    bw.on('unmaximize', onRestored);
+    bw.on('enter-full-screen', onTopChanged);
+    bw.on('maximize', onTopChanged);
     /* Obsidian has its own "Always on Top" item in the Window menu, enabled
        for popups only, so the toolbar reads the truth rather than its own
        memory (Flint point 2, trap B). */
@@ -236,6 +278,10 @@ export class ScratchpadWindow {
       try {
         bw.removeListener('resize', onGeometry);
         bw.removeListener('move', onGeometry);
+        bw.removeListener('leave-full-screen', onRestored);
+        bw.removeListener('unmaximize', onRestored);
+        bw.removeListener('enter-full-screen', onTopChanged);
+        bw.removeListener('maximize', onTopChanged);
         bw.removeListener('always-on-top-changed', onTopChanged);
       } catch {
         /* the main side is already gone */
@@ -243,61 +289,71 @@ export class ScratchpadWindow {
     });
   }
 
-  /* The parent matters. app.scope is the ROOT scope, while a popout's base
-     is installed as setWindowBaseScope(win, workspace.scope), and
-     workspace.scope delegates to the active view's own scope. A scope
-     parented on the root therefore takes the view-scope delegation out of
-     the chain for as long as it is on top. View.scope is public (@since
-     1.5.7) and workspace.scope is not, so the honest parent is the view's
-     own when it has one and the root when it does not. A MarkdownView
-     registers none today, which is why this costs nothing yet; it stops
-     being free the first time a view that does register one (a canvas
-     registers Mod+Z) lands in this window. Flint M-3, 2026-09-09. */
-  private scopeParent(): Scope {
-    return this.view?.scope ?? this.app.scope;
+  /* Keeps `searchOpen` true for the whole synchronous dispatch of the key
+     that closed the search; see the field's comment. The observer is armed
+     on the view's own content element and only reacts to a node that
+     carries the search container's class, so typing costs one class test
+     per mutation batch and no DOM query at all. */
+  private watchSearch(): void {
+    const wsWin = this.wsWin;
+    const view = this.view;
+    if (!wsWin || !view) return;
+    const host = view.contentEl;
+    const refresh = (): void => {
+      this.searchOpen = host.querySelector(SEARCH) !== null;
+    };
+    /* The popout's own constructor: the nodes it observes live in that
+       realm, and a main-window observer on them is not a contract Chromium
+       makes (the same reason instanceof is false across windows). */
+    const Observer = (wsWin.win as unknown as { MutationObserver: typeof MutationObserver }).MutationObserver;
+    const watch = new Observer((records) => {
+      for (const record of records) {
+        if (mentionsSearch(record.addedNodes) || mentionsSearch(record.removedNodes)) {
+          refresh();
+          return;
+        }
+      }
+    });
+    watch.observe(host, { childList: true, subtree: true });
+    refresh();
+    this.cleanups.push(() => watch.disconnect());
   }
 
-  private buildScope(): Scope {
-    const scope = new Scope(this.scopeParent());
-    for (const action of ACTIONS) {
-      if (!action.chord) continue;
-      const mods = [...action.chord.mods] as Modifier[];
-      scope.register(mods, action.chord.key, () => {
-        this.cb.runAction(action.id);
-        /* false stops the event: the chord is ours inside this window. */
-        return false;
-      });
-    }
-    return scope;
-  }
-
-  private pushScope(): void {
-    if (this.scopePushed) return;
-    /* Rebuilt when the view under the window changed its scope, so the
-       parent is never stale. */
-    if (!this.scope || this.scopeParentUsed !== this.scopeParent()) {
-      this.scope = this.buildScope();
-      this.scopeParentUsed = this.scopeParent();
-    }
-    this.app.keymap.pushScope(this.scope);
-    this.scopePushed = true;
-  }
-
-  private popScope(): void {
-    if (!this.scopePushed || !this.scope) return;
-    this.scopePushed = false;
-    this.app.keymap.popScope(this.scope);
+  /* Obsidian's own close, reached the way a member reaches it. The search
+     has no public handle and `editor:open-search` does not toggle: its
+     checkCallback calls showSearch every time (read in the 1.13.7 bundle),
+     so running the command again would only re-open the bar. The close
+     button's click handler is the thing that calls the search's own hide,
+     which detaches the container, restores the selection, pops its scope
+     and gives the editor its focus back. */
+  private closeSearch(): void {
+    const button = this.wsWin?.doc.querySelector<HTMLElement>(SEARCH_CLOSE);
+    button?.click();
+    this.searchOpen = false;
   }
 
   async openFile(file: TFile): Promise<void> {
     if (!this.leaf) return;
     await this.leaf.openFile(file, { active: true });
     this.renderCount();
+    /* A view swap under the same leaf would leave the observer on an
+       element that is no longer the one the search mounts into. */
+    this.watchSearch();
     this.focusEditor();
   }
 
-  focusEditor(): void {
-    this.view?.editor.focus();
+  /* `toEnd` is for a note this plugin just created: the inline title is
+     shown in this window (it is Obsidian's own filename editor, and the
+     member renames a note by typing in it), so without an explicit caret
+     the first keystroke of a brand new note could land in the title
+     instead of in the body (Tom, 2026-09-09). */
+  focusEditor(toEnd = false): void {
+    const view = this.view;
+    if (!view) return;
+    view.editor.focus();
+    if (!toEnd) return;
+    const last = view.editor.lastLine();
+    view.editor.setCursor({ line: last, ch: view.editor.getLine(last).length });
   }
 
   /* The hotkey and the tray item both land here: show when hidden or
@@ -363,13 +419,17 @@ export class ScratchpadWindow {
 
   applyAlwaysOnTop(on: boolean): void {
     try {
-      /* 'floating' is Electron's default level for the flag and the one
-         that sits below the Dock on macOS. */
-      this.bw?.setAlwaysOnTop(on, 'floating');
+      const bw = this.bw;
+      /* Not while the window is expanded: macOS refuses always-on-top on a
+         fullscreen window, and Obsidian's own handlers clear the flag on the
+         way in anyway. It is re-applied from the setting on the way out. */
+      if (bw && !bw.isFullScreen()) bw.setAlwaysOnTop(on, 'floating');
     } catch {
       /* the main side is already gone */
     }
-    this.chrome?.setAlwaysOnTop(on);
+    /* The glyph reads the window, not the request, so a flag the platform
+       refused never shows as taken. */
+    this.chrome?.setAlwaysOnTop(this.readAlwaysOnTop());
   }
 
   readAlwaysOnTop(): boolean {
@@ -397,6 +457,10 @@ export class ScratchpadWindow {
     const bw = this.bw;
     if (!bw) return;
     try {
+      /* A fullscreen or maximized rectangle is the screen, not a window the
+         member placed. Storing it would bring the scratchpad back the size
+         of the display on the next launch (Tom, 2026-09-09). */
+      if (bw.isFullScreen() || bw.isMaximized()) return;
       const { x, y, width, height } = bw.getBounds();
       this.cb.onBounds({ x, y, width, height });
     } catch {
@@ -455,10 +519,28 @@ export class ScratchpadWindow {
       this.wsWin?.doc.body.classList.remove(WINDOW_CLASS);
     }
     this.chrome = null;
-    this.scope = null;
+    this.searchOpen = false;
     this.leaf = null;
     this.wsWin = null;
     this.bw = null;
     this.popoutRemote = null;
   }
+}
+
+/* True when the event target sits inside `selector`. Written against the
+   shape rather than with instanceof, because an element from the popout is
+   not an instanceof anything in this realm, and it keeps working on a node
+   whose container was already detached, which is exactly the case an Escape
+   pressed inside the search bar produces. */
+function inside(target: EventTarget | null, selector: string): boolean {
+  const el = target as { closest?: (s: string) => unknown } | null;
+  return typeof el?.closest === 'function' && el.closest(selector) !== null;
+}
+
+function mentionsSearch(nodes: NodeList): boolean {
+  for (const node of Array.from(nodes)) {
+    const el = node as { className?: unknown };
+    if (typeof el.className === 'string' && el.className.includes('document-search-container')) return true;
+  }
+  return false;
 }

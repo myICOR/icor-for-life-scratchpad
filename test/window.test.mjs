@@ -6,6 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { escapeAction } from './build/pure.mjs';
 
 const repo = resolve(import.meta.dirname, '..');
 const read = (f) => readFileSync(resolve(repo, f), 'utf8');
@@ -27,15 +28,17 @@ test('setBounds and setAlwaysOnTop run synchronously after openPopoutLeaf, befor
   assert.doesNotMatch(block, /\bawait\b/, 'no await between openPopoutLeaf and the bounds');
 });
 
-test('inside attachSync the order is bounds, then fullscreenable, then always on top', () => {
+test('inside attachSync the order is bounds, then always on top, and the green button is left alone', () => {
   const body = src.slice(src.indexOf('private attachSync('), src.indexOf('private mount('));
   const bounds = body.indexOf('bw.setBounds(');
-  const full = body.indexOf('bw.setFullScreenable(false)');
-  const maximize = body.indexOf('bw.setMaximizable(false)');
   const top = body.indexOf('this.applyAlwaysOnTop(');
-  assert.ok(bounds >= 0 && full >= 0 && maximize >= 0 && top >= 0, 'all four calls are there');
-  assert.ok(bounds < full && full < maximize && maximize < top);
+  assert.ok(bounds >= 0 && top >= 0, 'both calls are there');
+  assert.ok(bounds < top);
   assert.doesNotMatch(body, /\bawait\b/, 'attachSync is synchronous by name and by fact');
+  /* Tom wants the scratchpad on its own screen. Disabling fullscreen and
+     maximize was the first build's answer to always-on-top being cleared;
+     the flag is restored on the way out instead (defect 7b). */
+  assert.doesNotMatch(src, /setFullScreenable|setMaximizable/, 'the window can go fullscreen and maximize');
 });
 
 test('the popout BrowserWindow comes from the popout own require, never the cached main-window remote', () => {
@@ -72,17 +75,6 @@ test('a leaf that leaves the popout without closing it is noticed', () => {
   assert.match(strip(read('src/main.ts')), /workspace\.on\('layout-change', \(\) => this\.window\.checkLeaf\(\)\)/);
 });
 
-test('the popout scope parents on the view own scope when it has one, never blindly on the root', () => {
-  /* app.scope is the ROOT scope; a popout's base is workspace.scope, which
-     delegates to the active view's own. Parenting on the root takes that
-     delegation out of the chain (Flint M-3). View.scope is public since
-     1.5.7; workspace.scope is not public at all. */
-  assert.match(src, /private scopeParent\(\): Scope \{\s*return this\.view\?\.scope \?\? this\.app\.scope;\s*\}/);
-  assert.match(src, /new Scope\(this\.scopeParent\(\)\)/);
-  assert.doesNotMatch(src, /new Scope\(this\.app\.scope\)/, 'the root is the fallback, not the default');
-  assert.match(src, /this\.scopeParentUsed !== this\.scopeParent\(\)/, 'a changed parent rebuilds the scope');
-});
-
 test('the toggle hides, it never closes, and Cmd-W stays a real close', () => {
   assert.match(src, /if \(bw\.isVisible\(\) && bw\.isFocused\(\)\) this\.hide\(\);\s*else this\.show\(\);/);
   assert.match(src, /this\.bw\?\.hide\(\)/, 'hide fires no beforeunload, so the leaf and the editor state stay alive');
@@ -99,17 +91,74 @@ test('always on top is re-asserted on every show, because maximize and fullscree
   assert.match(src, /setAlwaysOnTop\(on, 'floating'\)/, "'floating' is the level that sits below the Dock");
 });
 
-test('Escape hides and yields to anything that already consumed the key', () => {
+test('Escape yields to anything that already consumed the key, and its order is the one escape.ts fixes', () => {
   assert.match(src, /evt\.key !== 'Escape' \|\| evt\.defaultPrevented/, 'a modal that ate the Escape keeps it');
-  assert.match(src, /wsWin\.doc\.addEventListener\('keydown', onKey\)/, 'the popout document, not the global one');
+  assert.match(src, /wsWin\.doc\.addEventListener\('keydown', onEscape\)/, 'the popout document, not the global one');
+  /* The guard order itself, which is the defect Tom hit: a find bar he
+     could not get rid of, because Escape hid the window and the search came
+     back with it. */
+  assert.equal(escapeAction({ searchOpen: true, overlayOpen: false }), 'close-search');
+  assert.equal(escapeAction({ searchOpen: true, overlayOpen: true }), 'close-search', 'the search is first, even under a modal');
+  assert.equal(escapeAction({ searchOpen: false, overlayOpen: true }), 'yield');
+  assert.equal(escapeAction({ searchOpen: false, overlayOpen: false }), 'hide-window');
 });
 
-test('the popout key scope is pushed on focus and popped on blur, never at window-open', () => {
-  const push = src.indexOf('private pushScope()');
-  assert.ok(push >= 0);
-  assert.match(src, /const onFocus = \(\): void => \{\s*this\.pushScope\(\);/, 'pushScope goes on the focused window stack');
-  assert.match(src, /const onBlur = \(\): void => this\.popScope\(\);/);
-  assert.match(src, /this\.cleanups\.push\(\(\) => \{[\s\S]*this\.popScope\(\);/, 'and it is popped on teardown too');
+test('the search is closed through its own close button, because the command does not toggle', () => {
+  /* editor:open-search's checkCallback calls showSearch every time, so
+     running it again re-opens the bar rather than closing it (read in the
+     1.13.7 bundle). The close button's handler is the thing that calls the
+     search's own hide. */
+  assert.match(src, /const SEARCH_CLOSE = '\.document-search-close-button';/);
+  const close = src.slice(src.indexOf('private closeSearch()'));
+  assert.match(close.slice(0, 300), /querySelector<HTMLElement>\(SEARCH_CLOSE\)[\s\S]*?\.click\(\)/);
+});
+
+test('whether a search was open is read from an observer, never from the DOM at key time', () => {
+  /* Obsidian's relay sits on the popout WINDOW in the capture phase and is
+     registered in the WorkspaceWindow constructor, so the Keymap, and the
+     search's own Escape, run before any listener this plugin can attach.
+     By then the container is detached. An observer callback is a microtask,
+     so the flag still holds the pre-key state during the dispatch. */
+  assert.match(src, /private watchSearch\(\): void/);
+  assert.match(src, /watch\.observe\(host, \{ childList: true, subtree: true \}\)/);
+  assert.match(src, /this\.cleanups\.push\(\(\) => watch\.disconnect\(\)\)/);
+  assert.match(src, /const Observer = \(wsWin\.win as unknown as \{ MutationObserver/, "the popout's own constructor");
+});
+
+test('the chords are one capture listener matching the table, and no key scope is pushed at all', () => {
+  /* Obsidian's Scope matches on event.key, which macOS Option rewrites, so
+     no Option chord could fire; and a pushed scope replaces the window's
+     single scope pointer, so the editor search underneath it lost Enter and
+     the arrows (Tom's live test, defects 2 and 5). */
+  assert.doesNotMatch(src, /pushScope|popScope|new Scope\(/, 'the Scope route is gone, not disabled');
+  assert.match(src, /wsWin\.doc\.addEventListener\('keydown', onChord, \{ capture: true \}\)/);
+  assert.match(src, /const action = matchChord\(evt, Platform\.isMacOS\)/, 'one table, one matcher');
+  assert.match(src, /if \(evt\.defaultPrevented \|\| inside\(evt\.target, SEARCH\)\) return;/, 'the find bar keeps every key');
+  const chord = src.slice(src.indexOf('const onChord ='));
+  assert.match(chord.slice(0, 500), /evt\.preventDefault\(\);\s*evt\.stopPropagation\(\);/);
+});
+
+test('always on top is restored from the SETTING when the window leaves fullscreen or unmaximizes', () => {
+  /* macOS clears the flag on the way in and refuses it while fullscreen, so
+     the window's own answer at that moment is false. Restoring the window's
+     answer would lose the member's choice; the setting is the truth. */
+  assert.match(src, /const onRestored = \(\): void => this\.applyAlwaysOnTop\(this\.cb\.settings\(\)\.alwaysOnTop\);/);
+  for (const event of ['leave-full-screen', 'unmaximize']) {
+    assert.match(src, new RegExp(`bw\\.on\\('${event}', onRestored\\)`), `${event} restores the flag`);
+    assert.match(src, new RegExp(`bw\\.removeListener\\('${event}', onRestored\\)`), `${event} is released`);
+  }
+  for (const event of ['enter-full-screen', 'maximize']) {
+    assert.match(src, new RegExp(`bw\\.on\\('${event}', onTopChanged\\)`), `${event} only repaints the glyph`);
+  }
+  assert.match(src, /if \(bw && !bw\.isFullScreen\(\)\) bw\.setAlwaysOnTop\(on, 'floating'\)/, 'never fought while fullscreen');
+});
+
+test('a fullscreen or maximized rectangle is never saved as the window position', () => {
+  const body = src.slice(src.indexOf('private persistBounds()'));
+  const block = body.slice(0, body.indexOf('\n  }'));
+  const guard = block.indexOf('if (bw.isFullScreen() || bw.isMaximized()) return;');
+  const read = block.indexOf('bw.getBounds()');
+  assert.ok(guard >= 0 && read >= 0 && guard < read, 'the guard runs before the rectangle is read');
 });
 
 test('a modal is opened only after the popout really has focus', () => {
@@ -133,18 +182,45 @@ test('the restored popout is recognised structurally and hidden, because no mark
   assert.match(block, /this\.window\.adopt\(found\)\) this\.window\.hide\(\)/);
 });
 
-test('the count and the title rename are debounced and scoped to the window own view', () => {
+test('the count is debounced and scoped to the window own view, and nothing renames a note behind the member', () => {
   const main = strip(read('src/main.ts'));
-  assert.match(main, /RENAME_DEBOUNCE_MS = 800/);
   assert.match(main, /if \(!view \|\| info !== view\) return;/, 'typing anywhere else in the vault costs nothing');
   assert.match(src, /COUNT_PAINT_MS = 100/);
+  /* The first-line rename is gone: a note is named from a timestamp and
+     renamed by typing in Obsidian's own inline title, which carries
+     Obsidian's own validation (Tom, 2026-09-09). */
   const store = strip(read('src/notes/store.ts'));
-  const rename = store.slice(store.indexOf('async renameFromFirstLine('));
-  const save = rename.indexOf('await view.save()');
-  const move = rename.indexOf('await this.app.fileManager.renameFile(file, target)');
-  assert.ok(save >= 0 && move >= 0 && save < move, 'save first, so no debounced write lands on the old path');
-  assert.doesNotMatch(rename, /vault\.rename\(/, 'vault.rename updates no link');
-  assert.match(rename, /if \(wanted === '' \|\| wanted === file\.basename\) return null;/, 'an empty first line keeps the name');
+  assert.doesNotMatch(store, /renameFromFirstLine|fileManager\.renameFile|vault\.rename\(/, 'the plugin renames nothing');
+  assert.doesNotMatch(main, /renameSoon|RENAME_DEBOUNCE_MS/);
+  assert.doesNotMatch(read('styles.css'), /\.inline-title \{\s*display: none/, 'the inline title is the rename surface');
+});
+
+test('open in main window builds the leaf in the main window root split, and reveals one that is already there', () => {
+  /* getLeaf('tab') resolves against the ACTIVE leaf, which is the one in
+     the popout, so the first build opened the note in the scratchpad window
+     itself and only brought Obsidian forward (Tom, defect 3). */
+  const main = strip(read('src/main.ts'));
+  const body = main.slice(main.indexOf('private async openInMainWindow('));
+  const block = body.slice(0, body.indexOf('\n  }'));
+  assert.doesNotMatch(main, /getLeaf\('tab'\)/, 'a tab relative to the active leaf lands in the popout');
+  assert.match(block, /workspace\.createLeafInParent\(workspace\.rootSplit, -1\)/);
+  assert.match(block, /leaf\.getContainer\(\) instanceof WorkspaceWindow\) return;/, 'a popout leaf is not the main window');
+  assert.match(block, /if \(!found\) await leaf\.openFile\(file, \{ active: true \}\)/, 'a note already open is revealed, not opened twice');
+  const active = block.indexOf('workspace.setActiveLeaf(leaf, { focus: true })');
+  const reveal = block.indexOf('await workspace.revealLeaf(leaf)');
+  const forward = block.indexOf('bringWindowForward(this.remote)');
+  const hide = block.indexOf('this.window.hide()');
+  assert.ok(active >= 0 && reveal >= 0 && forward >= 0 && hide >= 0, 'all four steps are there');
+  assert.ok(active < reveal && reveal < forward && forward < hide, 'focus the leaf, reveal it, raise the window, then put the scratchpad away');
+  assert.match(block, /if \(!this\.settings\.alwaysOnTop\) this\.window\.hide\(\)/, 'a pinned window stays');
+});
+
+test('a new note opens with the caret in the body, not in the inline title', () => {
+  const main = strip(read('src/main.ts'));
+  const block = main.slice(main.indexOf('case ACTION_NEW_NOTE'), main.indexOf('case ACTION_DUPLICATE_NOTE'));
+  assert.match(block, /this\.window\.focusEditor\(true\)/);
+  assert.match(src, /focusEditor\(toEnd = false\): void/);
+  assert.match(src, /view\.editor\.setCursor\(\{ line: last, ch: view\.editor\.getLine\(last\)\.length \}\)/);
 });
 
 test('the delete is the host trash with an undo, and never a confirm dialog', () => {

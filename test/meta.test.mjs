@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { DAY, GROUP_NOTES, GROUP_PINNED, HOUR, MINUTE, WEEK, browseMetaText, characterCountText, groupOf, openedAgoText, orderRows } from './build/pure.mjs';
 
 const now = 1_757_400_000_000;
-const row = (over) => ({ path: 'p.md', title: 't', characters: 0, lastOpened: null, pinned: false, current: false, ...over });
+const row = (over) => ({ path: 'p.md', title: 't', characters: 0, lastOpened: null, modified: 0, preview: '', pinned: false, current: false, ...over });
 
 test('the count line renders at zero and gets the singular right', () => {
   assert.equal(characterCountText(0), '0 characters');
@@ -39,14 +39,25 @@ test('the current note says Current instead of when it was opened', () => {
   assert.equal(browseMetaText(row({ lastOpened: now - 4 * WEEK, characters: 4726 }), now), 'Opened 4 weeks ago · 4726 characters');
 });
 
-test('pinned notes come first, then the rest, each most recently opened first', () => {
+test('a note named from a timestamp is recognised by the preview in front of the line', () => {
+  assert.equal(
+    browseMetaText(row({ preview: 'meeting with Caro', lastOpened: now - HOUR, characters: 75 }), now),
+    'meeting with Caro · Opened 1 hour ago · 75 characters',
+  );
+  assert.equal(browseMetaText(row({ preview: 'first line', current: true, characters: 3 }), now), 'first line · Current · 3 characters');
+});
+
+test('pinned notes come first by when they were opened, the rest by when they changed', () => {
+  /* The pinned block is the member's own shortlist, so it keeps the order
+     they touched it in. The Notes block is a stack: newest change on top,
+     whether or not this plugin has ever seen the note opened. */
   const rows = [
-    row({ path: 'c.md', title: 'c', lastOpened: now - HOUR }),
+    row({ path: 'c.md', title: 'c', lastOpened: now - HOUR, modified: now - 3 * DAY }),
     row({ path: 'a.md', title: 'a', pinned: true, lastOpened: now - 10 * DAY }),
-    row({ path: 'd.md', title: 'd', lastOpened: null }),
+    row({ path: 'd.md', title: 'd', lastOpened: null, modified: now - MINUTE }),
     row({ path: 'b.md', title: 'b', pinned: true, lastOpened: now - MINUTE }),
   ];
-  assert.deepEqual(orderRows(rows).map((r) => r.path), ['b.md', 'a.md', 'c.md', 'd.md']);
+  assert.deepEqual(orderRows(rows).map((r) => r.path), ['b.md', 'a.md', 'd.md', 'c.md']);
   assert.equal(groupOf(rows[1]), GROUP_PINNED);
   assert.equal(groupOf(rows[0]), GROUP_NOTES);
 });

@@ -2,7 +2,7 @@
  * hotkey is never stored in a shape globalShortcut would throw on. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_SCRATCHPAD_FOLDER, DEFAULT_SETTINGS, DEFAULT_WINDOW_SIZE, cleanFolder, normaliseBounds, normaliseSettings, rekeyForRename } from './build/pure.mjs';
+import { DEFAULT_NEW_NOTE_FORMAT, DEFAULT_SCRATCHPAD_FOLDER, DEFAULT_SETTINGS, DEFAULT_SUBFOLDER_FORMAT, DEFAULT_WINDOW_SIZE, cleanFolder, normaliseBounds, normaliseSettings, rekeyForRename } from './build/pure.mjs';
 
 test('no data, bad data and an empty object all give the defaults', () => {
   assert.deepEqual(normaliseSettings(undefined), DEFAULT_SETTINGS);
@@ -20,7 +20,7 @@ test('the daily-note keys of the old plugin are dropped rather than carried', ()
     ownsMenuBar: true,
     showMenuBarIcon: true,
   });
-  assert.deepEqual(Object.keys(migrated).sort(), ['alwaysOnTop', 'bounds', 'hotkey', 'lastOpened', 'ownsMenuBar', 'pinned', 'scratchpadFolder', 'showMenuBarIcon']);
+  assert.deepEqual(Object.keys(migrated).sort(), ['alwaysOnTop', 'bounds', 'hotkey', 'lastOpened', 'newNoteFormat', 'ownsMenuBar', 'pinned', 'scratchpadFolder', 'showMenuBarIcon', 'subfolderFormat']);
   assert.equal(migrated.hotkey, 'Shift+CommandOrControl+F', 'the chord the member recorded survives the rename');
 });
 
@@ -41,6 +41,21 @@ test('the scratchpad folder is stored without surrounding slashes or backslashes
   assert.equal(cleanFolder('  '), '');
   assert.equal(normaliseSettings({ scratchpadFolder: '/Scratch/' }).scratchpadFolder, 'Scratch');
   assert.equal(DEFAULT_SETTINGS.scratchpadFolder, DEFAULT_SCRATCHPAD_FOLDER);
+});
+
+test('a new note is filed into a dated subfolder and named the way the Unique note creator names one', () => {
+  assert.equal(DEFAULT_SUBFOLDER_FORMAT, 'YYYY/MM');
+  assert.equal(DEFAULT_NEW_NOTE_FORMAT, 'YYYYMMDDHHmm');
+  assert.equal(DEFAULT_SETTINGS.subfolderFormat, DEFAULT_SUBFOLDER_FORMAT);
+  assert.equal(DEFAULT_SETTINGS.newNoteFormat, DEFAULT_NEW_NOTE_FORMAT);
+  /* A subfolder format is a folder path, cleaned like one, and empty is a
+     real answer: it means straight into the scratchpad folder. */
+  assert.equal(normaliseSettings({ subfolderFormat: '/YYYY/MM/' }).subfolderFormat, 'YYYY/MM');
+  assert.equal(normaliseSettings({ subfolderFormat: '' }).subfolderFormat, '');
+  assert.equal(normaliseSettings({ subfolderFormat: 7 }).subfolderFormat, DEFAULT_SUBFOLDER_FORMAT);
+  /* An empty NAME format is not: every note would be called Untitled. */
+  assert.equal(normaliseSettings({ newNoteFormat: '  ' }).newNoteFormat, DEFAULT_NEW_NOTE_FORMAT);
+  assert.equal(normaliseSettings({ newNoteFormat: 'YYYY-MM-DD HHmm' }).newNoteFormat, 'YYYY-MM-DD HHmm');
 });
 
 test('always on top defaults off, and the toggles accept only booleans', () => {

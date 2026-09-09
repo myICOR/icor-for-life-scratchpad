@@ -89,7 +89,7 @@ test('every register of the chord is preceded by an unregister of the same chord
 test('main-process state is released on unload and on beforeunload, and the tray reference is module-level', () => {
   const main = strip(read('src/main.ts'));
   assert.match(main, /registerDomEvent\(window, 'beforeunload'/, 'Cmd-R reload skips onunload');
-  assert.match(main, /onunload\(\): void \{\s*this\.renameSoon\.cancel\(\);\s*this\.releaseMainProcessState\(\);/, 'the rename debouncer lives on the plugin, so release() does not reach it');
+  assert.match(main, /onunload\(\): void \{\s*this\.releaseMainProcessState\(\);/);
   const release = main.slice(main.indexOf('private releaseMainProcessState'));
   const body = release.slice(0, release.indexOf('\n  }'));
   assert.match(body, /hotkey\?\.release\(\)/);
@@ -211,6 +211,53 @@ test('the stylesheet: prefixed selectors, Obsidian variables only, no hex, no pi
   for (const m of css.matchAll(/(color|background[a-z-]*|font-family|font-size|border-radius|border-color|padding|gap|min-width|min-height)\s*:\s*([^;]+);/g)) {
     assert.match(m[2].trim(), /^var\(--|^calc\(|^\d+$/, `${m[1]}: ${m[2].trim()} is not an Obsidian variable`);
   }
+});
+
+/* CSS specificity as the cascade counts it: [classes and attributes and
+   pseudo-classes, element names]. Ids would be a third number and this
+   stylesheet has none. */
+function specificity(selector) {
+  let classes = 0;
+  let elements = 0;
+  for (const m of selector.matchAll(/\.[a-zA-Z0-9_-]+|\[[^\]]*\]|::?[a-zA-Z-]+(\([^)]*\))?|[a-zA-Z][a-zA-Z0-9-]*/g)) {
+    if (/^[.[:]/.test(m[0])) classes += 1;
+    else elements += 1;
+  }
+  return [classes, elements];
+}
+
+test('the reserved top band outranks Obsidian own padding:0 on a markdown leaf', () => {
+  /* `.workspace-leaf-content[data-type='markdown'] .view-content
+     { padding: 0 }` in the 1.13.7 app.css is (0,3,0). The plugin's first
+     spelling of the band was `body.icor-scr-window .view-content`, which is
+     (0,2,1), so the band never applied: the pill, the first line and
+     Obsidian's find bar all shared the top forty pixels and the find bar's
+     close button sat under the traffic lights (Tom's live test,
+     2026-09-09). This is arithmetic, not source order, which is not
+     something a plugin controls. */
+  const css = read('styles.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const match = css.match(/([^{}]+)\{[^{}]*padding-top: var\(--icor-scr-band\)/);
+  assert.ok(match, 'the band rule is there');
+  const mine = specificity(match[1].trim());
+  const theirs = specificity(".workspace-leaf-content[data-type='markdown'] .view-content");
+  assert.deepEqual(theirs, [3, 0], 'the rule this has to beat, as read from the bundle');
+  assert.ok(mine[0] > theirs[0] || (mine[0] === theirs[0] && mine[1] > theirs[1]), `the band selector is ${mine} against ${theirs}`);
+});
+
+test('the window has a drag region of its own, because hiding the chrome took both of Obsidian own away', () => {
+  const css = read('styles.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const drag = css.match(/([^{}]+)\{\s*-webkit-app-region: drag;/);
+  assert.ok(drag, 'something drags');
+  assert.match(drag[1], /icor-scr-dragbar/, 'the strip, not only the pill');
+  /* Each selector is doubled to beat `body.is-frameless > .app-container ~ *
+     { -webkit-app-region: no-drag }` at (0,2,1). */
+  for (const selector of drag[1].split(',')) {
+    const s = selector.trim();
+    if (s === '') continue;
+    const spec = specificity(s);
+    assert.ok(spec[0] > 2 || (spec[0] === 2 && spec[1] > 1), `${s} is ${spec}, which does not outrank Obsidian no-drag rule`);
+  }
+  assert.match(css, /-webkit-app-region: no-drag/, 'the buttons and the title stay clickable');
 });
 
 test('no literal colour anywhere in src; the icon is the embedded PNG, handed to the Tray as a path', () => {

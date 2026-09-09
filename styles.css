@@ -13,16 +13,31 @@
 
 /* ---- the popout's chrome ------------------------------------------- */
 
+/* The one reserved band at the top of the window. The macOS traffic lights
+   are drawn at 12 down and 12 tall, and the toolbar pill sits 8 down and is
+   32 tall, so the band is the next spacing step above both of them, derived
+   from the tokens rather than typed. Everything the window draws, and
+   everything Obsidian prepends into the view, starts below it. */
+body.icor-scr-window {
+  --icor-scr-band: var(--size-4-12);
+  --icor-scr-footer-band: var(--size-4-10);
+}
+
 /* A tab strip in a one-tab window is chrome for a choice that does not
-   exist; the note's title is the window's title and macOS already draws it;
-   the inline title is that same fact a third time.
+   exist, and the view header is the note's name a second time.
+
+   The INLINE TITLE stays. It was hidden in the first build, on the argument
+   that macOS already draws the note's name in the window title. That was
+   true and it cost the member the only place a note can be renamed: notes
+   are named from a timestamp now, and the inline title is Obsidian's own
+   filename editor, with Obsidian's own validation behind it (Tom,
+   2026-09-09).
 
    No .status-bar rule: App.statusBar is built once against the main
    window's own element and no popout ever gets one, so hiding it here
    would be a rule that never matches anything (Flint LOW, 2026-09-09). */
 body.icor-scr-window .workspace-tab-header-container,
-body.icor-scr-window .view-header,
-body.icor-scr-window .inline-title {
+body.icor-scr-window .view-header {
   display: none;
 }
 
@@ -34,13 +49,29 @@ body.icor-scr-window .markdown-preview-view.is-readable-line-width .markdown-pre
   max-width: none;
 }
 
-/* The top pad is the headroom the first line needs to clear the floating
-   pill, and the bottom band is the reserved space for the count line. The
-   left and right margins stay the host's own --file-margins, which the
-   editor already applies. */
-body.icor-scr-window .view-content {
-  padding-top: var(--size-4-12);
-  padding-bottom: var(--size-4-10);
+/* The top pad is the headroom the first line and Obsidian's own find bar
+   need to clear the traffic lights and the floating pill, and the bottom
+   band is the reserved space for the count line. The left and right margins
+   stay the host's own --file-margins, which the editor already applies.
+
+   THE LEAF SELECTOR IS LOAD BEARING. Obsidian sets
+   `.workspace-leaf-content[data-type='markdown'] .view-content
+   { padding: 0 }`, which is (0,3,0). The first spelling of this rule was
+   `body.icor-scr-window .view-content`, which is (0,2,1) and therefore
+   lost: the band never existed at all, and the find bar opened underneath
+   the traffic lights with its own close button unreachable (Tom's live
+   test, 2026-09-09). Adding the leaf class makes this (0,3,1), which wins
+   on the element count with the class count tied. test/hygiene.test.mjs
+   computes both and compares them, so a shortened selector goes red.
+
+   Obsidian's editor search prepends .document-search-container INSIDE this
+   padding box, as the first child of the source view, so the band carries
+   it too and no separate offset or right inset is needed: the pill's own
+   band is above the bar rather than beside it. The replace variant is the
+   same element with .mod-replace-mode on it and simply grows downwards. */
+body.icor-scr-window .workspace-leaf-content .view-content {
+  padding-top: var(--icor-scr-band);
+  padding-bottom: var(--icor-scr-footer-band);
 }
 
 /* ---- the floating toolbar ------------------------------------------ */
@@ -64,24 +95,45 @@ body.icor-scr-window .icor-scr-toolbar {
   box-shadow: var(--shadow-s);
 }
 
-/* The pill is the window's drag handle. Under the default hidden frame
-   style Obsidian itself takes the drag off the title bar
-   (`.is-hidden-frameless:not(.starter, .is-popout-modal) .titlebar
-   { -webkit-app-region: no-drag }`) and puts it on
-   `.workspace-tab-header-container`, which the rule above hides. So the
-   window has no drag region left, which reads as a broken window rather
-   than as a missing property. The class is named twice to outrank
+/* ---- the drag strip ------------------------------------------------ */
+
+/* The window's drag handle: the whole reserved band, full width, invisible.
+   Obsidian gives a popout its drag region on `.titlebar` and
+   `.workspace-tab-header-container-inner`, and this window shows neither, so
+   without a region of its own it cannot be moved at all. The first build put
+   the region on the pill: a hundred and thirty pixels in the top right
+   corner with nothing to say so, which Tom read as a window that does not
+   drag (live test, 2026-09-09). The strip is mounted before the pill and
+   sits one layer below it, so the buttons stay clickable.
+
+   The popout is created frameless with titleBarStyle "hidden" (Obsidian's
+   main.js: frame is false unless the member chose the native frame), which
+   is the condition an app-region drag needs. */
+body.icor-scr-window .icor-scr-dragbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--icor-scr-band);
+  z-index: calc(var(--layer-popover) - 1);
+}
+
+/* Each class is named twice to outrank
    `body.is-frameless > .app-container ~ * { -webkit-app-region: no-drag }`
    at (0,3,1) against (0,2,1), by specificity rather than by source order,
    which is not a property a plugin controls. */
 /* eslint-disable css/no-invalid-properties -- -webkit-app-region is a real
    Chromium property that the CSS linter's data does not carry; it is the
    only way to give a frameless window a drag handle. */
+body.icor-scr-window .icor-scr-dragbar.icor-scr-dragbar,
 body.icor-scr-window .icor-scr-toolbar.icor-scr-toolbar {
   -webkit-app-region: drag;
 }
 
-body.icor-scr-window .icor-scr-tool.icor-scr-tool {
+/* Everything inside the band that the member has to be able to hit, plus
+   the inline title, which is a text field they type in. */
+body.icor-scr-window .icor-scr-tool.icor-scr-tool,
+body.icor-scr-window .inline-title.inline-title {
   -webkit-app-region: no-drag;
 }
 /* eslint-enable css/no-invalid-properties */

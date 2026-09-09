@@ -6,8 +6,10 @@ comes forward with your last note in it, ready to type. Press the hotkey
 again and it goes away. It is a real Obsidian window with a real
 markdown editor in it, so your other plugins work inside it.
 
-The note's name follows its first line. The window remembers where you
-put it. There is no separate capture box and nothing is appended to your
+A new note is filed into a dated subfolder and named from the clock, the
+way Obsidian's own Unique note creator names one; you rename it by typing
+in its title at the top of the window. The window remembers where you put
+it. There is no separate capture box and nothing is appended to your
 daily note; this is a scratchpad, and every note in it is a normal file
 in a folder you choose.
 
@@ -28,13 +30,13 @@ not add itself to your login items.
 - **It puts one icon in the menu bar** (system tray on Windows and
   Linux), with a menu of three items. Switch it off under Settings if
   you only want the hotkey.
-- **It opens one extra Obsidian window** and hides its tab strip, its
-  view header and its inline title, inside that window only. It can float
-  above other applications when you turn that on.
-- **It creates, renames and deletes notes in one folder,** the
-  scratchpad folder you pick. Deleting goes to whatever trash you have
-  configured in Obsidian, and the notice that follows carries an Undo.
-  It never touches a note outside that folder.
+- **It opens one extra Obsidian window** and hides its tab strip and its
+  view header, inside that window only. It can float above other
+  applications when you turn that on.
+- **It creates and deletes notes under one folder,** the scratchpad
+  folder you pick. Deleting goes to whatever trash you have configured in
+  Obsidian, and the notice that follows carries an Undo. It never touches
+  a note outside that folder, and it never renames one behind your back.
 - **It listens for one link:** `obsidian://icor-scratchpad`. The `text`
   parameter is treated as plain text and becomes the body of a new note;
   it is never rendered as HTML.
@@ -74,10 +76,13 @@ window forward. Pressing the hotkey while the window is in front puts it
 away again; so does Escape. Cmd-W really closes it, and the next press
 of the hotkey opens it again on the same note.
 
-**The toolbar** is the pill at the top right, and it is also the window's
-drag handle. Under Obsidian's default hidden frame style the drag region
-lives on the tab strip, which this window hides, so without the pill the
-window could not be moved at all.
+**Drag the top edge to move the window.** The whole band across the top
+is the drag handle. Under Obsidian's default hidden frame style the drag
+region lives on the title bar and the tab strip, both of which this
+window hides, so without a strip of its own the window could not be moved
+at all.
+
+**The toolbar** is the pill at the top right.
 
 | Glyph | Does |
 | --- | --- |
@@ -89,29 +94,45 @@ window could not be moved at all.
 **The count** at the bottom centre is the number of characters in the
 note, updated as you type.
 
+**Escape** puts the window away, unless something in the window is
+already using it: an open find bar closes first, and so does a palette or
+a menu. Only when nothing else is listening does the window go.
+
 **Always on top** makes the window float above other applications. It is
 off by default. Obsidian's own Window menu has the same toggle, and the
-anchor follows whichever one you used. Maximising the window or taking it
-fullscreen clears the flag, which is Obsidian's behaviour, not ours; the
-plugin turns it back on the next time the window is shown.
+anchor follows whichever one you used.
+
+**Fullscreen and maximise both work,** so the scratchpad can have a
+screen to itself. macOS does not allow always on top and fullscreen at
+the same time, so the flag switches off while the window is expanded and
+comes back the moment it is not. The size and position the plugin
+remembers is the one you gave the window, never the whole screen.
 
 ## The notes
 
-Every note is a normal markdown file directly inside your scratchpad
-folder (`00 Daily Scratchpad` by default, changeable under Settings). A
-note you move into a subfolder has left the scratchpad.
+Every note is a normal markdown file under your scratchpad folder
+(`00 Daily Scratchpad` by default, changeable under Settings).
 
-**The name follows the first line.** Type a first line and the file is
-renamed to match it, about a second after you stop typing. Characters
-that Obsidian or Windows refuse in a file name become spaces, a name that
-already exists gets " 2", and an empty first line leaves the name alone.
-Links to the note are updated, because the rename goes through Obsidian's
-own rename.
+**A new note is filed by date and named from the clock.** With the
+defaults, a note made today lands in `00 Daily Scratchpad/2026/09/` and
+is called `202609091812`, which is what Obsidian's core Unique note
+creator would call it. Both formats are settings: the subfolder
+(`YYYY/MM`, empty for none) and the name (`YYYYMMDDHHmm`). Missing
+folders are created. A second note in the same minute gets " 2".
 
-**Browse notes** lists every note in the folder, pinned ones first, with
-when you last opened it and how long it is. Hover a row, or select it
-with the arrow keys, and you get pin and delete. Delete goes to your
-configured trash and the notice carries an Undo.
+**You rename a note by typing in its title,** at the top of the window.
+That title is Obsidian's own, so the rules and the link updating are
+Obsidian's too. Add anything you like after the code:
+`202609091812 meeting with Caro` is one file name. Nothing renames a note
+behind your back.
+
+**Browse notes** lists every note under the folder, including the ones in
+the dated subfolders. Pinned notes come first, in the order you opened
+them; the rest come newest change first. Each row shows the note's first
+line, when you last opened it and how long it is, so a note named after a
+timestamp is still recognisable. Hover a row, or select it with the arrow
+keys, and you get pin and delete. Delete goes to your configured trash
+and the notice carries an Undo.
 
 ## The actions palette
 
@@ -132,10 +153,11 @@ keys to any of them.
 | Open in main window | Shift-Cmd-O |
 | Delete note | Shift-Cmd-Backspace |
 
-Those chords are live **only while the scratchpad window has focus**, and
-they are released the moment it loses focus, so outside the window they
-take nothing away from the rest of Obsidian or from any other
-application. On Windows and Linux, Cmd is Ctrl.
+Those chords are live **only inside the scratchpad window**: they are
+matched by that window's own key listener and nowhere else, so outside it
+they take nothing away from the rest of Obsidian or from any other
+application. Inside the find bar they are off as well, so Enter and the
+arrow keys still walk the matches. On Windows and Linux, Cmd is Ctrl.
 
 **Inside the window a chord does take over**, so none of the ones above
 collide with an Obsidian default: every chord was checked against the
@@ -217,10 +239,11 @@ URL and `{query}` in place of the text; tick "Encode {query}".
 
 ## Settings
 
-Global hotkey (Record hotkey, Clear), Hotkey as text, Scratchpad folder,
-Always on top, Window size and position (remembered automatically, with a
-button to forget it), This vault owns the menu bar and the hotkey, Show
-menu bar icon, Other vaults on this Mac. Every change applies at once.
+Global hotkey (Record hotkey, Clear), Hotkey as text, Always on top,
+Window size and position (remembered automatically, with a button to
+forget it), Scratchpad folder, Subfolder for new notes, Name for new
+notes, This vault owns the menu bar and the hotkey, Show menu bar icon,
+Other vaults on this Mac. Every change applies at once.
 Settings appear in Obsidian's settings search.
 
 ## Known limits

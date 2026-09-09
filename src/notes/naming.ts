@@ -1,5 +1,12 @@
-/* The note's name is its first line. This module is the whole rule, and it
- * is pure so the tests can round-trip it.
+/* What a file name may contain, how a collision is resolved, how a folder
+ * path is built out of a format, and the one line of a note the browse list
+ * shows as a preview. Pure, so the tests can round-trip all four.
+ *
+ * The note's name is NOT its first line any more. A new note is named from a
+ * moment format (the Unique note creator's YYYYMMDDHHmm by default) and the
+ * member renames it by typing in Obsidian's own inline title, which is
+ * Obsidian's rename with Obsidian's validation. This module's sanitiser
+ * still guards the one name the plugin itself writes (Tom, 2026-09-09).
  *
  * The character set is the union of what Obsidian refuses and what Windows
  * refuses, because a vault syncs across operating systems and a name that
@@ -69,15 +76,39 @@ export function stripInlineMarkdown(line: string): string {
   return out.trim();
 }
 
-/* The title a note's body asks for: its first non-empty line with the
-   markdown that decorates it removed, sanitised. '' when the body has no
-   first line worth a name, in which case the caller keeps the old one. */
-export function titleFromContent(content: string): string {
+/* Long enough to recognise a note by, short enough that the second line of
+   a browse row still ends with when it was opened and how long it is. */
+export const PREVIEW_MAX = 60;
+
+/* The browse list's preview: the note's first non-empty line with the
+   markdown that decorates it removed, cut to length. A note named
+   202609091812 is unrecognisable without it. '' when the note is empty, in
+   which case the row simply carries no preview. */
+export function previewFromContent(content: string, max = PREVIEW_MAX): string {
   for (const line of content.split('\n')) {
     const stripped = stripInlineMarkdown(line);
-    if (stripped !== '') return sanitiseName(stripped);
+    if (stripped === '') continue;
+    return stripped.length <= max ? stripped : `${stripped.slice(0, max - 1).trimEnd()}\u2026`;
   }
   return '';
+}
+
+/* A vault-relative folder path from a rendered moment format. A format may
+   legitimately carry slashes (YYYY/MM is the default), so each segment is
+   sanitised on its own and an empty one drops out rather than leaving a
+   double slash behind. */
+export function sanitisePath(raw: string): string {
+  return raw
+    .split('/')
+    .map((segment) => sanitiseName(segment))
+    .filter((segment) => segment !== '')
+    .join('/');
+}
+
+/* Joins path parts, skipping the empty ones: the scratchpad folder can be
+   '' (the vault root) and the subfolder can be '' (no subfolder). */
+export function joinPath(...parts: string[]): string {
+  return parts.filter((part) => part !== '').join('/');
 }
 
 /* `base`, or `base 2`, `base 3` and so on until the name is free. The

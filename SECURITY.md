@@ -96,32 +96,48 @@ document, so nothing can reach the main window; `styles.css` has no
 selector that is not anchored on `body.icor-scr-window` or on the
 plugin's own `icor-scr-` classes, and `test/hygiene.test.mjs` pins that.
 
-**It binds keys in two places, both scoped.** A `Scope` with the actions'
-chords is pushed when the scratchpad window takes focus and popped when
-it loses focus (`src/window/ScratchpadWindow.ts`), so those chords exist
-only inside that window. Inside it they do take precedence over whatever
-else is bound, because each handler returns `false`, so none of them
-collides with an Obsidian default and `test/actions.test.mjs` holds the
-1.13.7 default hotkey table to keep it that way. The scope parents on the
-active view's own scope when that view has one and on `app.scope`
-otherwise; `app.scope` is the keymap root and `workspace.scope`, which a
-popout's base normally delegates through, has no public handle. A `keydown` listener on that window's document
-handles Escape and yields to anything that already consumed the key. The
-recorder (`src/hotkey/recorder.ts`) adds a capture-phase `keydown`
-listener to the settings window's document for the length of one
-recording and removes it on the first chord, on Escape, and when the row
-is torn down.
+**It listens for keys in two places, both scoped to one document.** No
+key scope is pushed onto Obsidian's keymap at all. The actions' chords
+are matched by one capture-phase `keydown` listener on the scratchpad
+window's own document (`src/window/ScratchpadWindow.ts`), against
+`KeyboardEvent.code` and the table in `src/actions/table.ts`, so they
+exist only inside that window and only for the chords in that table:
+every other key, Enter and the arrows included, is passed through
+untouched, and every key pressed inside Obsidian's find bar is passed
+through as well. A matched chord does take precedence over whatever else
+is bound in that window, so none of them may collide with an Obsidian
+default and `test/actions.test.mjs` holds the 1.13.7 default hotkey table
+to keep it that way. A second listener on the same document handles
+Escape: it yields to anything that already consumed the key, closes an
+open find bar before anything else, and hides the window only when no
+find bar, modal, suggestion popup or menu is open. The recorder
+(`src/hotkey/recorder.ts`) adds a capture-phase `keydown` listener to the
+settings window's document for the length of one recording and removes it
+on the first chord, on Escape, and when the row is torn down.
 
-**It writes notes in one folder of your vault.**
-`src/notes/store.ts` is the only module that creates, renames or deletes
-a file. Everything it does is scoped to files whose direct parent is the
-configured scratchpad folder (`owns()`); a note anywhere else in the
-vault is invisible to it. Creation is `Vault.create`, renaming is
-`FileManager.renameFile` (so links are updated) after `TextFileView.save`,
-and deletion is `FileManager.trashFile`, which honours whatever trash you
-configured in Obsidian. The name is derived by `src/notes/naming.ts` and
-sanitised against the union of what Obsidian and Windows refuse, so a
-first line can never make the plugin write outside the folder.
+**It reads four of Obsidian's own CSS classes** in that window's
+document: `.document-search-container` (is a find bar open),
+`.document-search-close-button` (the click that closes it, which is the
+same thing a member's own click does), and `.modal-container`,
+`.suggestion-container` and `.menu` (is something else already using
+Escape). These are Obsidian's markup rather than its API, so a future
+version could rename them; the failure mode is that Escape hides the
+window when it should have closed a find bar, which is what the previous
+version did anyway. Nothing is written to those elements.
+
+**It writes notes under one folder of your vault.**
+`src/notes/store.ts` is the only module that creates or deletes a file.
+Everything it does is scoped to files under the configured scratchpad
+folder (`owns()`); a note anywhere else in the vault is invisible to it.
+Creation is `Vault.create` and `Vault.createFolder`, one segment at a
+time, and deletion is `FileManager.trashFile`, which honours whatever
+trash you configured in Obsidian. **The plugin renames nothing.** A note
+is named from a date format when it is created and renamed only by the
+member typing in Obsidian's own inline title, which is Obsidian's rename
+with Obsidian's validation and link updating. Both the subfolder path and
+the name are rendered through `src/notes/naming.ts`, sanitised segment by
+segment against the union of what Obsidian and Windows refuse, so no date
+format can make the plugin write outside the folder.
 
 **It answers one link.** `src/main.ts` registers
 `obsidian://icor-scratchpad`. The `text` parameter becomes the body of a

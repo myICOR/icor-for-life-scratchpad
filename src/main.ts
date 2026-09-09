@@ -18,7 +18,7 @@
  * menu, and app.commands to run Obsidian's own editor search behind the
  * "Find in note" row; both read through a shape guard, both in this file,
  * both pinned by test/hygiene.test.mjs). */
-import { MarkdownView, Notice, Platform, Plugin, TFile, WorkspaceWindow, debounce } from 'obsidian';
+import { MarkdownView, Notice, Platform, Plugin, TFile, WorkspaceWindow } from 'obsidian';
 import type { Editor, MarkdownFileInfo, ObsidianProtocolData, WorkspaceLeaf } from 'obsidian';
 import {
   ACTIONS,
@@ -45,6 +45,7 @@ import { materialiseTrayIcon } from './electron/trayIcon';
 import { ActionsModal } from './modals/ActionsModal';
 import { BrowseModal } from './modals/BrowseModal';
 import type { NoteRow } from './notes/meta';
+import { previewFromContent } from './notes/naming';
 import { toPlainText } from './notes/plain';
 import { NoteStore } from './notes/store';
 import { Ownership } from './ownership/ownership';
@@ -55,11 +56,6 @@ import { ScratchpadWindow } from './window/ScratchpadWindow';
 
 const NO_REMOTE = 'The scratchpad window, the menu bar icon and the global hotkey need the desktop process, which this build does not expose. The commands still work.';
 const NO_ICON_PATH = 'The menu bar icon needs a vault on the local file system, so it stays off. The window, the hotkey and the commands still work.';
-
-/* Long enough that the rename does not fire mid-word, short enough that the
-   window title follows the first line while the member is still looking at
-   it. Reset on every keystroke. */
-const RENAME_DEBOUNCE_MS = 800;
 
 export default class ScratchpadPlugin extends Plugin {
   override settings: ScratchpadSettings = { ...DEFAULT_SETTINGS };
@@ -75,7 +71,6 @@ export default class ScratchpadPlugin extends Plugin {
   /* The chord last handed to apply(), taken or not, so an unrelated
      settings change does not re-run register and re-show the notice. */
   private appliedChord = '';
-  private readonly renameSoon = debounce(() => void this.renameFromFirstLine(), RENAME_DEBOUNCE_MS, true);
   private readonly trayActions: TrayActions = {
     toggleWindow: () => void this.toggleWindow(),
     newNote: () => void this.runAction(ACTION_NEW_NOTE),
@@ -84,7 +79,7 @@ export default class ScratchpadPlugin extends Plugin {
 
   override async onload(): Promise<void> {
     this.settings = normaliseSettings(await this.loadData());
-    this.notes = new NoteStore(this.app, () => this.settings.scratchpadFolder);
+    this.notes = new NoteStore(this.app, () => this.settings);
     this.window = new ScratchpadWindow(this.app, {
       settings: () => this.settings,
       runAction: (action) => void this.runAction(action),
@@ -98,9 +93,11 @@ export default class ScratchpadPlugin extends Plugin {
     }
     this.registerObsidianProtocolHandler(PROTOCOL_ACTION, (params) => void this.onProtocol(params));
 
-    /* The title follows the first line, and the count follows every
-       keystroke. Both are debounced; both are scoped to the window's own
-       view, so typing anywhere else in the vault costs nothing. */
+    /* The count follows every keystroke, debounced, and scoped to the
+       window's own view, so typing anywhere else in the vault costs
+       nothing. The note's NAME does not follow the first line any more: it
+       is a timestamp the member edits in the inline title, which is
+       Obsidian's own rename (Tom, 2026-09-09). */
     this.registerEvent(this.app.workspace.on('editor-change', (_editor: Editor, info: MarkdownFileInfo) => this.onEditorChange(info)));
     /* A rename moves the key of the pin and of the opened time with it. */
     this.registerEvent(this.app.vault.on('rename', (file, oldPath) => this.onVaultRename(file.path, oldPath)));
@@ -146,10 +143,6 @@ export default class ScratchpadPlugin extends Plugin {
   }
 
   override onunload(): void {
-    /* The rename debouncer lives on the plugin, not on the window, so
-       release() does not reach it and a rename could land 800 ms after
-       unload (Flint LOW). */
-    this.renameSoon.cancel();
     this.releaseMainProcessState();
     /* The popout is Obsidian's window, not the plugin's: on disable it
        simply becomes a normal window with the note in it. Nothing is
@@ -288,17 +281,6 @@ export default class ScratchpadPlugin extends Plugin {
     const view = this.window.view;
     if (!view || info !== view) return;
     this.window.scheduleCount();
-    this.renameSoon();
-  }
-
-  private async renameFromFirstLine(): Promise<void> {
-    const view = this.window.view;
-    if (!view) return;
-    try {
-      await this.notes.renameFromFirstLine(view);
-    } catch (err) {
-      new Notice(`The note could not be renamed: ${err instanceof Error ? err.message : String(err)}`);
-    }
   }
 
   private onVaultRename(newPath: string, oldPath: string): void {
@@ -381,7 +363,8 @@ export default class ScratchpadPlugin extends Plugin {
       case ACTION_NEW_NOTE: {
         const created = await this.notes.create();
         await this.openInWindow(created);
-        this.window.focusEditor();
+        /* In the body, past the end, never in the inline title. */
+        this.window.focusEditor(true);
         return;
       }
       case ACTION_DUPLICATE_NOTE: {
@@ -432,10 +415,7 @@ export default class ScratchpadPlugin extends Plugin {
       }
       case ACTION_OPEN_IN_MAIN_WINDOW: {
         if (!file) return;
-        const leaf = this.app.workspace.getLeaf('tab');
-        await leaf.openFile(file, { active: true });
-        this.app.workspace.setActiveLeaf(leaf, { focus: true });
-        if (this.remote) bringWindowForward(this.remote);
+        await this.openInMainWindow(file);
         return;
       }
       case ACTION_DELETE_NOTE: {
@@ -448,6 +428,33 @@ export default class ScratchpadPlugin extends Plugin {
       default:
         return;
     }
+  }
+
+  /* The note, as a tab in the MAIN window, with that window in front.
+     workspace.getLeaf('tab') resolves against the ACTIVE leaf, which is the
+     one in the popout, so the first build opened the note in the scratchpad
+     window itself and only brought Obsidian forward (Tom's live test,
+     2026-09-09). createLeafInParent names the main window's root split
+     outright. A note already open in a root-split tab is revealed rather
+     than opened a second time. */
+  private async openInMainWindow(file: TFile): Promise<void> {
+    const workspace = this.app.workspace;
+    let open: WorkspaceLeaf | null = null;
+    workspace.iterateAllLeaves((leaf) => {
+      if (open || leaf.getContainer() instanceof WorkspaceWindow) return;
+      const view = leaf.view;
+      if (view instanceof MarkdownView && view.file?.path === file.path) open = leaf;
+    });
+    const found: WorkspaceLeaf | null = open;
+    const leaf = found ?? workspace.createLeafInParent(workspace.rootSplit, -1);
+    if (!found) await leaf.openFile(file, { active: true });
+    workspace.setActiveLeaf(leaf, { focus: true });
+    await workspace.revealLeaf(leaf);
+    if (this.remote) bringWindowForward(this.remote);
+    /* The scratchpad goes away, because the member asked for the note
+       somewhere else. A window they pinned above everything stays: that
+       flag is a standing instruction, not a per-action one. */
+    if (!this.settings.alwaysOnTop) this.window.hide();
   }
 
   private async openActions(): Promise<void> {
@@ -486,6 +493,8 @@ export default class ScratchpadPlugin extends Plugin {
         title: file.basename,
         characters: content.length,
         lastOpened: this.settings.lastOpened[file.path] ?? null,
+        modified: file.stat.mtime,
+        preview: previewFromContent(content),
         pinned: this.settings.pinned.includes(file.path),
         current: file.path === current,
       });
