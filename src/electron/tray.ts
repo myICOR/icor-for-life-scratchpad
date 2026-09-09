@@ -16,13 +16,13 @@ import { PLUGIN_NAME } from '../constants';
 import type { RemoteApi } from './remote';
 
 export interface TrayActions {
-  quickNote(): void;
-  openDailyNote(): void;
+  toggleWindow(): void;
+  newNote(): void;
   openSettings(): void;
 }
 
 export interface TrayState {
-  /* The recorded chord, shown as the label on the "Quick note" item. */
+  /* The recorded chord, shown as the label on the "Scratchpad" item. */
   hotkey: string;
 }
 
@@ -34,19 +34,19 @@ export function trayExists(): boolean {
 }
 
 function template(actions: TrayActions, state: TrayState): MenuItemConstructorOptions[] {
-  const quickNote: MenuItemConstructorOptions = { label: 'Quick note', click: () => actions.quickNote() };
+  const toggle: MenuItemConstructorOptions = { label: 'Scratchpad', click: () => actions.toggleWindow() };
   /* The accelerator is a label only: the chord is registered through
      globalShortcut (src/electron/globalHotkey.ts), and a menu accelerator
      that also registered would collide with it. */
   if (state.hotkey) {
-    quickNote.accelerator = state.hotkey;
-    quickNote.registerAccelerator = false;
+    toggle.accelerator = state.hotkey;
+    toggle.registerAccelerator = false;
   }
   return [
     { label: PLUGIN_NAME, enabled: false },
     { type: 'separator' },
-    quickNote,
-    { label: 'Open daily note', click: () => actions.openDailyNote() },
+    toggle,
+    { label: 'New note', click: () => actions.newNote() },
     { type: 'separator' },
     { label: 'Settings', click: () => actions.openSettings() },
   ];

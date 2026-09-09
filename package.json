@@ -1,8 +1,8 @@
 {
-  "name": "icor-for-life-quick-notes-menu",
+  "name": "icor-for-life-scratchpad",
   "version": "0.1.0",
   "private": true,
-  "description": "ICOR for Life - Quick Notes Menu - a menu bar icon and a global hotkey that capture a line into today's daily note.",
+  "description": "ICOR for Life - Scratchpad - a floating note window with a menu bar icon and a global hotkey.",
   "license": "LicenseRef-ICOR-Source-Available-1.0",
   "type": "module",
   "scripts": {

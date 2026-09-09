@@ -1,4 +1,4 @@
-/* Build ICOR for Life - Quick Notes Menu into a single CommonJS main.js for
+/* Build ICOR for Life - Scratchpad into a single CommonJS main.js for
  * Obsidian.
  *
  * Everything the plugin needs at runtime comes from the host. `obsidian` is

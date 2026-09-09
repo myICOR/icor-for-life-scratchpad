@@ -8,7 +8,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { COMMAND_OPEN_DAILY_NOTE, COMMAND_QUICK_NOTE, PLUGIN_ID, PLUGIN_NAME, PROTOCOL_ACTION } from './build/pure.mjs';
+import { ACTIONS, PLUGIN_ID, PLUGIN_NAME, PROTOCOL_ACTION } from './build/pure.mjs';
 
 const repo = resolve(import.meta.dirname, '..');
 const read = (f) => readFileSync(resolve(repo, f), 'utf8');
@@ -56,6 +56,8 @@ test('the description is what the directory accepts', () => {
   assert.match(manifest.description, /\.$/, 'ends with a full stop');
   assert.doesNotMatch(manifest.description, /^(This|A plugin|An Obsidian plugin)/);
   assert.match(manifest.description, /ICOR for Life/);
+  assert.equal(manifest.name, 'ICOR for Life - Scratchpad');
+  assert.equal(manifest.id, 'icor-for-life-scratchpad');
   /* obsidianmd/validate-manifest: the charset and the two forbidden
      words, on the three fields the scanner reads. A colon is outside the
      charset, and "Obsidian" is not a word a description may carry. */
@@ -94,23 +96,24 @@ test('every named import from obsidian exists at minAppVersion', () => {
      older. Checked by the scanner's no-unsupported-api rule in lint. */
 });
 
-test('commands: bare ids, sentence case, an icon each, no default hotkeys', () => {
+test('every command comes from the one action table, and none carries a default hotkey', () => {
   const main = read('src/main.ts');
-  const commands = [...main.matchAll(/addCommand\(\{ id: ([A-Z_]+), name: '([^']+)', icon: '([^']+)'/g)];
-  assert.equal(commands.length, 2);
-  const ids = new Set(commands.map((c) => c[1]));
-  assert.deepEqual([...ids].sort(), ['COMMAND_OPEN_DAILY_NOTE', 'COMMAND_QUICK_NOTE']);
-  for (const id of [COMMAND_QUICK_NOTE, COMMAND_OPEN_DAILY_NOTE]) assert.doesNotMatch(id, /icor|quick-notes-menu/, 'bare id, the app prefixes the plugin id');
-  for (const c of commands) {
-    assert.match(c[2], /^[A-Z][a-z]/, `${c[2]} is sentence case`);
-    assert.match(c[3], /^lucide-/);
+  /* One registration loop over ACTIONS: the commands, the popout's chords
+     and the palette rows cannot drift apart because they are one list. */
+  assert.match(main, /for \(const action of ACTIONS\) \{\s*this\.addCommand\(\{ id: action\.id, name: action\.name, icon: action\.icon/);
+  assert.equal([...main.matchAll(/addCommand\(/g)].length, 1, 'exactly one addCommand call');
+  assert.ok(ACTIONS.length >= 10);
+  for (const action of ACTIONS) {
+    assert.doesNotMatch(action.id, /icor|scratchpad/, 'bare id, the app prefixes the plugin id');
+    assert.match(action.name, /^[A-Z][a-z]/, `${action.name} is sentence case`);
+    assert.match(action.icon, /^lucide-/);
   }
   assert.doesNotMatch(main, /hotkeys:/, 'no default hotkey on a command; the global chord is the member\'s');
 });
 
 test('the protocol action is the documented one', () => {
-  assert.equal(PROTOCOL_ACTION, 'icor-quick-note');
-  assert.match(read('README.md'), /obsidian:\/\/icor-quick-note\?vault=/);
+  assert.equal(PROTOCOL_ACTION, 'icor-scratchpad');
+  assert.match(read('README.md'), /obsidian:\/\/icor-scratchpad\?vault=/);
 });
 
 test('electron is a devDependency for its types and an esbuild external, never bundled', () => {

@@ -2,13 +2,26 @@
  * hotkey is never stored in a shape globalShortcut would throw on. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_SETTINGS, cleanFolder, normaliseSettings } from './build/pure.mjs';
+import { DEFAULT_SCRATCHPAD_FOLDER, DEFAULT_SETTINGS, DEFAULT_WINDOW_SIZE, cleanFolder, normaliseBounds, normaliseSettings, rekeyForRename } from './build/pure.mjs';
 
 test('no data, bad data and an empty object all give the defaults', () => {
   assert.deepEqual(normaliseSettings(undefined), DEFAULT_SETTINGS);
   assert.deepEqual(normaliseSettings(null), DEFAULT_SETTINGS);
   assert.deepEqual(normaliseSettings('nope'), DEFAULT_SETTINGS);
   assert.deepEqual(normaliseSettings({}), DEFAULT_SETTINGS);
+});
+
+test('the daily-note keys of the old plugin are dropped rather than carried', () => {
+  const migrated = normaliseSettings({
+    hotkey: 'Shift+CommandOrControl+F',
+    dailyFolder: '00 Daily Scratchpad',
+    dailyFormat: 'YYYY/MM/YYYY-MM-DD',
+    appendTemplate: '- {{time}} {{text}}',
+    ownsMenuBar: true,
+    showMenuBarIcon: true,
+  });
+  assert.deepEqual(Object.keys(migrated).sort(), ['alwaysOnTop', 'bounds', 'hotkey', 'lastOpened', 'ownsMenuBar', 'pinned', 'scratchpadFolder', 'showMenuBarIcon']);
+  assert.equal(migrated.hotkey, 'Shift+CommandOrControl+F', 'the chord the member recorded survives the rename');
 });
 
 test('the default hotkey is none: nothing is registered until the member records one', () => {
@@ -22,22 +35,44 @@ test('a stored hotkey is kept in canonical spelling, and an invalid one is dropp
   assert.equal(normaliseSettings({ hotkey: 42 }).hotkey, '');
 });
 
-test('the daily folder is stored without surrounding slashes or backslashes', () => {
+test('the scratchpad folder is stored without surrounding slashes or backslashes', () => {
   assert.equal(cleanFolder('/Journal/2026/'), 'Journal/2026');
   assert.equal(cleanFolder('Journal\\2026'), 'Journal/2026');
   assert.equal(cleanFolder('  '), '');
-  assert.equal(normaliseSettings({ dailyFolder: '/Daily/' }).dailyFolder, 'Daily');
+  assert.equal(normaliseSettings({ scratchpadFolder: '/Scratch/' }).scratchpadFolder, 'Scratch');
+  assert.equal(DEFAULT_SETTINGS.scratchpadFolder, DEFAULT_SCRATCHPAD_FOLDER);
 });
 
-test('an empty date format and a template without {{text}} fall back to the defaults', () => {
-  assert.equal(normaliseSettings({ dailyFormat: '  ' }).dailyFormat, 'YYYY-MM-DD');
-  assert.equal(normaliseSettings({ appendTemplate: '- {{time}}' }).appendTemplate, DEFAULT_SETTINGS.appendTemplate);
-  assert.equal(normaliseSettings({ appendTemplate: '{{text}}' }).appendTemplate, '{{text}}');
-});
-
-test('the toggles default on and accept only booleans', () => {
+test('always on top defaults off, and the toggles accept only booleans', () => {
+  assert.equal(DEFAULT_SETTINGS.alwaysOnTop, false);
   assert.equal(DEFAULT_SETTINGS.ownsMenuBar, true);
   assert.equal(DEFAULT_SETTINGS.showMenuBarIcon, true);
+  assert.equal(normaliseSettings({ alwaysOnTop: 'true' }).alwaysOnTop, false);
   assert.equal(normaliseSettings({ ownsMenuBar: 'false' }).ownsMenuBar, true);
   assert.equal(normaliseSettings({ showMenuBarIcon: false }).showMenuBarIcon, false);
+});
+
+test('a rectangle only counts when all four numbers are there and the size is positive', () => {
+  assert.deepEqual(normaliseBounds({ x: 1.4, y: 2.6, width: 480, height: 640 }), { x: 1, y: 3, width: 480, height: 640 });
+  assert.equal(normaliseBounds({ x: 1, y: 2, width: 480 }), null);
+  assert.equal(normaliseBounds({ x: 1, y: 2, width: 0, height: 640 }), null);
+  assert.equal(normaliseBounds({ x: Number.NaN, y: 2, width: 4, height: 6 }), null);
+  assert.equal(normaliseBounds('nope'), null);
+  assert.equal(DEFAULT_SETTINGS.bounds, null, 'before the first open, Obsidian places the window');
+  assert.ok(DEFAULT_WINDOW_SIZE.width > 0 && DEFAULT_WINDOW_SIZE.height > 0);
+});
+
+test('the pinned list and the opened map survive only as the shapes they are', () => {
+  assert.deepEqual(normaliseSettings({ pinned: ['a.md', 'a.md', 3, ''] }).pinned, ['a.md']);
+  assert.deepEqual(normaliseSettings({ pinned: 'a.md' }).pinned, []);
+  assert.deepEqual(normaliseSettings({ lastOpened: { 'a.md': 12.7, 'b.md': -1, 'c.md': 'x', '': 5 } }).lastOpened, { 'a.md': 13 });
+  assert.deepEqual(normaliseSettings({ lastOpened: ['a'] }).lastOpened, {});
+});
+
+test('a rename moves the pin and the opened time with the file', () => {
+  const before = normaliseSettings({ pinned: ['old.md', 'other.md'], lastOpened: { 'old.md': 5, 'other.md': 6 } });
+  const after = rekeyForRename(before, 'old.md', 'new.md');
+  assert.deepEqual(after.pinned.sort(), ['new.md', 'other.md']);
+  assert.deepEqual(after.lastOpened, { 'new.md': 5, 'other.md': 6 });
+  assert.deepEqual(before.pinned.sort(), ['old.md', 'other.md'], 'the input is not mutated');
 });
