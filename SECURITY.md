@@ -20,7 +20,7 @@ Two channels, in order of preference:
 1. **GitHub private security advisory** (preferred). Open a draft advisory
    on the Security tab of this repository. It stays private between you
    and the maintainer until a fix ships.
-2. **Email** `team@myicor.com` with `SECURITY` and
+2. **Email** `support@myicor.com` with `SECURITY` and
    `icor-for-life-quick-notes-menu` in the subject line. This is a
    monitored mailbox.
 
