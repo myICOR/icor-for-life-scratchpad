@@ -81,9 +81,16 @@ test('main-process state is released on unload and on beforeunload, and the tray
   assert.match(tray, /t\.destroy\(\)/);
 });
 
-test('the tray menu label never registers its accelerator (the chord is globalShortcut\'s)', () => {
+test('the tray menu label never registers its accelerator, and no click handler pops the menu a second time', () => {
   const tray = strip(read('src/electron/tray.ts'));
   assert.match(tray, /registerAccelerator = false/);
+  assert.doesNotMatch(tray, /popUpContextMenu|\.on\('click'/, 'a tray with a context menu opens it on click by itself; a handler opens it twice on macOS');
+});
+
+test('the hotkey is gated by ownership and re-applied only when the chord changes', () => {
+  const main = strip(read('src/main.ts'));
+  assert.match(main, /const wantedChord = this\.settings\.ownsMenuBar \? this\.settings\.hotkey : ''/);
+  assert.match(main, /if \(wantedChord !== this\.appliedChord\)/);
 });
 
 test('protocol text is plain text: no innerHTML, no outerHTML, no insertAdjacentHTML anywhere', () => {
@@ -149,13 +156,16 @@ test('the stylesheet: prefixed selectors, Obsidian variables only, no hex, no pi
   }
 });
 
-test('the placeholder icon is the only literal colour in src, and it is black (the template-image contract)', () => {
+test('no literal colour anywhere in src; the icon is the embedded PNG', () => {
   for (const f of sources) {
     const text = strip(readFileSync(f, 'utf8'));
-    const hexes = [...text.matchAll(/#[0-9a-fA-F]{6}\b/g)].map((m) => m[0]);
-    if (f.endsWith('/trayIcon.ts')) assert.deepEqual(hexes, ['#000000']);
-    else assert.deepEqual(hexes, [], rel(f));
+    assert.deepEqual([...text.matchAll(/#[0-9a-fA-F]{3,8}\b/g)].map((m) => m[0]), [], rel(f));
   }
+  const icon = strip(read('src/electron/trayIcon.ts'));
+  assert.match(icon, /from '\.\.\/\.\.\/assets\/menubar-icon\.png'/);
+  assert.match(icon, /from '\.\.\/\.\.\/assets\/menubar-icon@2x\.png'/);
+  assert.doesNotMatch(icon, /canvas|adapter|readBinary/, 'no placeholder drawn, no file read at load');
+  assert.match(read('esbuild.config.mjs'), /loader: \{ '\.png': 'dataurl' \}/);
 });
 
 test('the built plugin requires obsidian only and reaches Electron through window.require at runtime', () => {
@@ -164,4 +174,5 @@ test('the built plugin requires obsidian only and reaches Electron through windo
   assert.deepEqual([...new Set(requires)], ['obsidian']);
   assert.match(main, /@electron\/remote/, 'the remote module name is present for the runtime lookup');
   assert.doesNotMatch(main, /node_modules/);
+  assert.equal([...main.matchAll(/data:image\/png;base64,/g)].length, 2, 'the two icon PNGs are embedded');
 });

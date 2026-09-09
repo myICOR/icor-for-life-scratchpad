@@ -100,13 +100,13 @@ export class QuickNotesSettingsTab extends PluginSettingTab {
         heading: 'Menu bar',
         items: [
           {
-            name: 'This vault owns the menu bar',
-            desc: 'With several vaults open, only one should show the icon. Switch this off in the others. The hotkey is separate: it is held by whichever vault registers it first, and the others get a notice.',
+            name: 'This vault owns the menu bar and the hotkey',
+            desc: 'The icon and the hotkey live in the one desktop process every open vault shares, so exactly one vault should own them. Switch this off in every other vault; a vault that does not own them shows no icon and registers no hotkey.',
             control: { type: 'toggle', key: 'ownsMenuBar' },
           },
           {
             name: 'Show menu bar icon',
-            desc: 'The icon in the macOS menu bar (the system tray on Windows and Linux). The hotkey works without it.',
+            desc: 'The icon in the macOS menu bar (the system tray on Windows and Linux). The hotkey works without it, as long as this vault owns them.',
             control: { type: 'toggle', key: 'showMenuBarIcon', disabled: () => !this.plugin.settings.ownsMenuBar },
           },
         ],
@@ -121,7 +121,7 @@ export class QuickNotesSettingsTab extends PluginSettingTab {
   override async setControlValue(key: string, value: unknown): Promise<void> {
     this.plugin.settings = normaliseSettings({ ...this.plugin.settings, [key]: value });
     await this.plugin.saveSettings();
-    await this.plugin.applySettings();
+    this.plugin.applySettings();
     if (key === 'hotkey') this.repaintRecorder?.();
     if (key === 'ownsMenuBar') this.update();
   }

@@ -62,16 +62,18 @@ process is shared with every other plugin and vault. The stored chord is
 validated (`src/hotkey/accelerator.ts`) before it reaches the system,
 and a chord with no modifier is refused so plain typing can never be
 captured. Nothing is registered while the setting is empty, which is
-the default.
+the default, and nothing is registered in a vault where "This vault
+owns the menu bar and the hotkey" is off: `globalShortcut` is one object
+per main process, shared by every open vault, so exactly one vault may
+own the chord (`applySettings` in `src/main.ts`).
 
 **It creates one Tray.** `src/electron/tray.ts` holds a module-level
 reference, builds the menu from a fixed four-item template (header,
 Quick note, Open daily note, Settings), and destroys the tray in
 `onunload` and on `beforeunload`. The menu's accelerator is a label only
-(`registerAccelerator: false`). The icon comes from
-`assets/menubar-icon.png` in the plugin folder when present, else from a
-canvas drawn at load (`src/electron/trayIcon.ts`); both are read through
-`app.vault.adapter`, inside the vault.
+(`registerAccelerator: false`). The icon is `assets/menubar-icon.png`
+and its 2x, embedded into `main.js` at build time as data URLs
+(`src/electron/trayIcon.ts`); nothing is read from disk at load.
 
 **It writes to one file.** `src/daily/dailyNote.ts` resolves today's note
 from the plugin's own folder and date-format settings, creates it with

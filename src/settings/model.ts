@@ -15,7 +15,8 @@ export interface QuickNotesSettings {
   dailyFormat: string;
   /* What one capture appends. {{time}} is HH:mm, {{text}} the note. */
   appendTemplate: string;
-  /* Multi-vault guard: only one vault should own the tray icon. */
+  /* Multi-vault guard: the tray and the global hotkey live in the one
+     main process, so exactly one vault owns both. */
   ownsMenuBar: boolean;
   /* Show the tray icon at all (the hotkey works without it). */
   showMenuBarIcon: boolean;

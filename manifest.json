@@ -3,7 +3,7 @@
   "name": "ICOR for Life - Quick Notes Menu",
   "version": "0.1.0",
   "minAppVersion": "1.13.0",
-  "description": "A menu bar icon and a global hotkey you pick yourself: press it in any app, Obsidian comes forward with a capture box, and the line lands in today's daily note. Part of the ICOR for Life suite.",
+  "description": "A menu bar icon and a global hotkey you pick yourself. Press it in any app, the vault comes forward with a capture box, and the line lands in today's daily note. Part of the ICOR for Life suite.",
   "author": "myICOR",
   "authorUrl": "https://myicor.com",
   "isDesktopOnly": true

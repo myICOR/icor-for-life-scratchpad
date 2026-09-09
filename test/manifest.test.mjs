@@ -56,6 +56,16 @@ test('the description is what the directory accepts', () => {
   assert.match(manifest.description, /\.$/, 'ends with a full stop');
   assert.doesNotMatch(manifest.description, /^(This|A plugin|An Obsidian plugin)/);
   assert.match(manifest.description, /ICOR for Life/);
+  /* obsidianmd/validate-manifest: the charset and the two forbidden
+     words, on the three fields the scanner reads. A colon is outside the
+     charset, and "Obsidian" is not a word a description may carry. */
+  const charset = /^[A-Za-z0-9\s.,!?'"-]+$/;
+  for (const field of ['name', 'description']) {
+    assert.match(manifest[field], charset, `${field} is outside the directory's charset`);
+    assert.doesNotMatch(manifest[field], /obsidian/i, `${field} names the app`);
+    assert.doesNotMatch(manifest[field], /plugin/i, `${field} says "plugin"`);
+  }
+  assert.doesNotMatch(manifest.id, /obsidian|plugin/i, 'the id names the app or says "plugin"');
 });
 
 test('every named import from obsidian exists at minAppVersion', () => {
@@ -108,5 +118,10 @@ test('electron is a devDependency for its types and an esbuild external, never b
   assert.equal(pkg.dependencies, undefined, 'no runtime dependencies');
   const build = read('esbuild.config.mjs');
   assert.match(build, /external: \['obsidian', 'electron', '@electron\/remote'\]/);
-  assert.match(read('.npmrc'), /electron_skip_binary_download=1/);
+  /* npm 11 has no per-project spelling of the skip switch, so the release
+     workflow sets the environment variable on its install step, and it
+     runs only scripts that exist. */
+  const workflow = read('.github/workflows/release.yml');
+  assert.match(workflow, /ELECTRON_SKIP_BINARY_DOWNLOAD: "1"/);
+  for (const m of workflow.matchAll(/npm run ([a-z]+)/g)) assert.ok(pkg.scripts[m[1]], `release.yml runs "npm run ${m[1]}", which package.json does not define`);
 });

@@ -67,14 +67,14 @@ function swapMenu(remote: RemoteApi, actions: TrayActions, state: TrayState): vo
 
 /* Creates the tray, or rebuilds its menu when one already exists. `image`
    is a template NativeImage from trayIcon.ts. */
-export function ensureTray(remote: RemoteApi, image: NativeImage, actions: TrayActions, state: TrayState, isMac: boolean): void {
+export function ensureTray(remote: RemoteApi, image: NativeImage, actions: TrayActions, state: TrayState): void {
   if (!tray) {
     const t = new remote.Tray(image);
     t.setToolTip(PLUGIN_NAME);
-    /* On macOS a tray with a context menu set opens it on left click
-       already; the explicit handler keeps a right click and a left click
-       on the same path and is harmless on the other platforms. */
-    if (isMac) t.on('click', () => t.popUpContextMenu());
+    /* No click handler: a tray with a context menu set opens it on left
+       click by itself, and on macOS the click event fires while that
+       native menu is already opening, so an explicit popUpContextMenu
+       would open it twice (Flint, 2026-09-09). */
     tray = t;
   }
   swapMenu(remote, actions, state);

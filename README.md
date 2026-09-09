@@ -17,9 +17,10 @@ does not add itself to your login items.
 ## What this plugin does on your machine, stated plainly
 
 - **It registers one system-wide keyboard shortcut**, the one you record
-  under Settings. Nothing is registered until you do. A shortcut that is
-  already taken by another application (or another vault) is refused and
-  a notice says so.
+  under Settings. Nothing is registered until you do, and nothing is
+  registered in a vault where "This vault owns the menu bar and the
+  hotkey" is off. A shortcut that is already taken by another
+  application is refused and a notice says so.
 - **It puts one icon in the menu bar** (system tray on Windows and Linux),
   with a menu of four items. Switch it off under Settings if you only want
   the hotkey.
@@ -54,9 +55,9 @@ stored chord means Ctrl on a Windows or Linux machine you later open the
 vault on. Control on macOS stays `Control`.
 
 If the chord is taken by another application, the plugin shows a notice
-and holds nothing. Pick a different one. The same happens when a second
-vault with this plugin is open and already holds the chord: one process,
-one owner per chord.
+and holds nothing. Pick a different one. With several vaults open, the
+hotkey belongs to the one vault that owns the menu bar (see below); the
+others never register it.
 
 ## The daily note settings must match your Daily notes plugin
 
@@ -107,16 +108,18 @@ menu bar. Its menu:
 - **Open daily note**
 - **Settings**, which opens this plugin's settings page
 
-Left click and right click both open the menu on macOS. On Windows and
-Linux the icon sits in the system tray with the same menu.
+A click opens the menu on macOS. On Windows and Linux the icon sits in
+the system tray with the same menu.
 
-**Several vaults.** With two vaults open that both run this plugin, each
-would add its own icon. Switch **This vault owns the menu bar** off in
-the vaults that should not show one. The hotkey is separate from the
-icon: whichever vault registers it first holds it, and the others get a
-notice.
+**Several vaults.** The icon and the hotkey live in the one desktop
+process every open vault shares, so exactly one vault must own them.
+Switch **This vault owns the menu bar and the hotkey** off in every
+other vault: a vault that does not own them shows no icon and registers
+no hotkey. Leaving it on in two vaults would have each one take the
+chord from the other.
 
-**Show menu bar icon** turns the icon off while keeping the hotkey.
+**Show menu bar icon** turns the icon off while keeping the hotkey (in
+the owning vault).
 
 ## The `obsidian://` door
 
@@ -150,8 +153,8 @@ URL and `{query}` in place of the text; tick "Encode {query}".
 ## Settings
 
 Global hotkey (Record hotkey, Clear), Hotkey as text, Daily note
-folder, Date format, Append template, This vault owns the menu bar,
-Show menu bar icon. Every change applies at once: the chord
+folder, Date format, Append template, This vault owns the menu bar and
+the hotkey, Show menu bar icon. Every change applies at once: the chord
 re-registers and the icon is created, rebuilt or removed. Settings
 appear in Obsidian's settings search.
 
@@ -164,18 +167,15 @@ appear in Obsidian's settings search.
   `obsidian://` door from Raycast and Shortcuts, the "Settings" item
   opening the right tab, the folder picker in the settings) are the first
   beta round's check. See `docs/releases/0.1.0.md`.
-- **The icon is read from the plugin folder at load.** The designed icon
-  ships in this repository as `assets/menubar-icon.png` (16x16) and
-  `assets/menubar-icon@2x.png` (32x32), black plus alpha. A plugin folder
-  without the `assets/` directory (a release carries `main.js`,
-  `manifest.json` and `styles.css` only) falls back to a placeholder "i"
-  mark drawn at load time; embedding the icon into `main.js` is the
-  follow-up.
+- **The icon is baked into `main.js`.** `assets/menubar-icon.png` (16x16)
+  and `assets/menubar-icon@2x.png` (32x32), black plus alpha, are the
+  source of truth and are embedded at build time, so a three-file install
+  shows the icon; changing it means a rebuild.
 - **No rich popover under the icon.** The menu is a native menu; the
   capture box is an Obsidian modal in the vault window. A popover is a
   later phase.
-- **The hotkey is system-wide and first-come.** A chord another app
-  already holds cannot be taken; the plugin says so rather than steal it.
+- **The hotkey is system-wide.** A chord another app already holds
+  cannot be taken; the plugin says so rather than steal it.
 - **The daily note settings are a copy**, see above.
 - **Not on mobile.** The manifest says so; the plugin does not load
   there.

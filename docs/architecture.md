@@ -16,7 +16,7 @@ src/hotkey/recorder.ts       the Record hotkey / Clear row (DOM, settings page)
 src/electron/remote.ts       the one door to @electron/remote; bringWindowForward()
 src/electron/globalHotkey.ts GlobalHotkey: apply(chord) / release(), Flint's rules
 src/electron/tray.ts         module-level Tray + Menu; ensure / rebuild / destroy
-src/electron/trayIcon.ts     NativeImage from assets/ or the canvas placeholder
+src/electron/trayIcon.ts     NativeImage from the two PNGs embedded at build time
 src/daily/format.ts          pure: path join, template render, append
 src/daily/dailyNote.ts       DailyNote: ensure(), append() via Vault.process, open()
 src/capture/CaptureModal.ts  the capture box (Modal), one instance at a time
@@ -53,9 +53,10 @@ onload
   onLayoutReady -> applySettings()
 
 applySettings   (load, and after every settings change)
-  hotkey.apply(chord)      unregister(chord); ok = register(chord); Notice if !ok
+  chord = ownsMenuBar ? settings.hotkey : ''
+  chord changed?           hotkey.apply(chord): unregister(chord); ok = register(chord); Notice if !ok
   tray wanted?             no  -> destroyTray()
-                           yes -> exists? rebuildTrayMenu() : buildTrayImage() + ensureTray()
+                           yes -> exists? rebuildTrayMenu() : ensureTray(buildTrayImage())
 
 onunload / beforeunload
   hotkey.release(); destroyTray()
@@ -65,6 +66,13 @@ onunload / beforeunload
 the renderer down without `onunload`, and a Tray or a registered chord
 in the main process would outlive it: a duplicate icon, and a chord
 whose register then returns false forever (Flint, 2026-09-09).
+
+The ownership setting gates both. `globalShortcut` and the Tray live in
+the one main process every vault window shares; without the gate, a
+second vault's unregister-before-register would take the chord from the
+first, and the first's release on unload would drop the second's live
+chord. A vault that does not own them registers nothing and holds
+nothing, so there is never a second party to collide with.
 
 ## Bringing the window forward
 

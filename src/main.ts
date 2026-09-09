@@ -32,13 +32,14 @@ export default class QuickNotesPlugin extends Plugin {
   private daily!: DailyNote;
   private remote: RemoteApi | null = null;
   private hotkey: GlobalHotkey | null = null;
+  /* The chord last handed to apply(), taken or not, so an unrelated
+     settings change does not re-run register and re-show the notice. */
+  private appliedChord = '';
   private readonly trayActions: TrayActions = {
     quickNote: () => this.captureFromOutside(),
     openDailyNote: () => this.openDailyFromOutside(),
     openSettings: () => this.openSettings(),
   };
-  /* Which icon source the tray shows; for the settings page and the report. */
-  trayUsesPlaceholder = false;
 
   override async onload(): Promise<void> {
     this.settings = normaliseSettings(await this.loadData());
@@ -47,7 +48,6 @@ export default class QuickNotesPlugin extends Plugin {
     this.addCommand({ id: COMMAND_QUICK_NOTE, name: 'Quick note', icon: 'lucide-pencil-line', callback: () => this.openCapture() });
     this.addCommand({ id: COMMAND_OPEN_DAILY_NOTE, name: 'Open daily note', icon: 'lucide-calendar', callback: () => void this.daily.open() });
     this.registerObsidianProtocolHandler(PROTOCOL_ACTION, (params) => void this.onProtocol(params));
-    this.addSettingTab(new QuickNotesSettingsTab(this.app, this));
 
     if (Platform.isDesktop) {
       this.remote = getRemote();
@@ -62,9 +62,13 @@ export default class QuickNotesPlugin extends Plugin {
       }
     }
 
+    /* After getRemote(): the settings page reads hasRemote() when it is
+       indexed, and it is indexed at registration. */
+    this.addSettingTab(new QuickNotesSettingsTab(this.app, this));
+
     /* Layout-ready: the tray icon should not appear before the vault has
        a window worth bringing forward. */
-    this.app.workspace.onLayoutReady(() => void this.applySettings());
+    this.app.workspace.onLayoutReady(() => this.applySettings());
   }
 
   override onunload(): void {
@@ -82,11 +86,25 @@ export default class QuickNotesPlugin extends Plugin {
   /* Makes the main process match the settings: register (or release) the
      chord, create, rebuild or remove the tray. Called on load and after
      every settings change. Every step is guarded so a failure in one (a
-     taken chord) does not leave the other undone. */
-  async applySettings(): Promise<void> {
+     taken chord) does not leave the other undone.
+
+     Both live in the one main process every vault window shares, so both
+     are gated by the ownership setting: a vault that does not own them
+     registers nothing and holds nothing. Without that gate, vault B's
+     unregister-before-register would take the chord from vault A, and
+     A's release on unload would drop B's live chord (Flint, 2026-09-09). */
+  applySettings(): void {
     const remote = this.remote;
     if (!remote || !this.hotkey) return;
-    this.hotkey.apply(this.settings.hotkey, () => this.captureFromOutside());
+    const wantedChord = this.settings.ownsMenuBar ? this.settings.hotkey : '';
+    /* Re-applying the same chord would re-show the "taken" notice on
+       every unrelated settings change (a tray toggle); only a changed
+       chord goes back through register. A taken chord is retried when
+       the member records it again. */
+    if (wantedChord !== this.appliedChord) {
+      this.appliedChord = wantedChord;
+      this.hotkey.apply(wantedChord, () => this.captureFromOutside());
+    }
     const wantTray = this.settings.ownsMenuBar && this.settings.showMenuBarIcon;
     if (!wantTray) {
       destroyTray();
@@ -98,12 +116,7 @@ export default class QuickNotesPlugin extends Plugin {
       return;
     }
     try {
-      const { image, usedPlaceholder } = await buildTrayImage(this.app, this.manifest, remote);
-      this.trayUsesPlaceholder = usedPlaceholder;
-      /* A settings change while the image was loading may have turned
-         the tray off again. */
-      if (!(this.settings.ownsMenuBar && this.settings.showMenuBarIcon)) return;
-      ensureTray(remote, image, this.trayActions, state, Platform.isMacOS);
+      ensureTray(remote, buildTrayImage(remote), this.trayActions, state);
       setTrayStatus('');
     } catch (err) {
       new Notice(`The menu bar icon could not be created: ${err instanceof Error ? err.message : String(err)}`);

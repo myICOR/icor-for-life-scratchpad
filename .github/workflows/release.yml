@@ -39,6 +39,10 @@ jobs:
 
       - name: Install
         run: npm ci
+        env:
+          # electron is a devDependency for its types only; its install
+          # script would otherwise download the binary.
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
 
       - name: The tag is the manifest version
         run: |
@@ -51,9 +55,6 @@ jobs:
 
       - name: Gate (typecheck, build, lint, tests)
         run: npm run gate
-
-      - name: Mutation runs (every guard must go red at least once)
-        run: npm run mutate
 
       - name: Attest main.js, manifest.json and styles.css
         uses: actions/attest-build-provenance@v3

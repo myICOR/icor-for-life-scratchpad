@@ -28,8 +28,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
   capture box.
 - The vault window is brought to the front from any app on every
   trigger.
-- Settings: This vault owns the menu bar (multi-vault guard), Show menu
-  bar icon.
+- Settings: This vault owns the menu bar and the hotkey (the multi-vault
+  guard; both live in the one desktop process, so one vault owns both),
+  Show menu bar icon.
+- The menu bar icon, embedded into `main.js` at build time from
+  `assets/`.
 - A `setStatus(text)` hook on the plugin for a text beside the icon, wired
   to nothing yet.
 
@@ -38,10 +41,6 @@ Versions follow [Semantic Versioning](https://semver.org/).
   another app, the window coming forward, the `obsidian://` door and the
   Settings menu item are the first beta round's check. See
   `docs/releases/0.1.0.md`.
-- The menu bar icon is read from `assets/` in the plugin folder at
-  load; a folder without it (a release ships three files) shows a
-  placeholder "i" mark. Embedding the icon into `main.js` is the
-  follow-up.
 - No rich popover under the icon; the capture box is a modal in the
   vault window.
 
