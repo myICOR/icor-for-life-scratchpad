@@ -115,15 +115,20 @@ find bar, modal, suggestion popup or menu is open. The recorder
 settings window's document for the length of one recording and removes it
 on the first chord, on Escape, and when the row is torn down.
 
-**It reads four of Obsidian's own CSS classes** in that window's
+**It reads six of Obsidian's own CSS classes** in that window's
 document: `.document-search-container` (is a find bar open),
 `.document-search-close-button` (the click that closes it, which is the
-same thing a member's own click does), and `.modal-container`,
+same thing a member's own click does), `.modal-container`,
 `.suggestion-container` and `.menu` (is something else already using
-Escape). These are Obsidian's markup rather than its API, so a future
-version could rename them; the failure mode is that Escape hides the
-window when it should have closed a find bar, which is what the previous
-version did anyway. Nothing is written to those elements.
+Escape), and `.inline-title` (where the caret goes after a subject note,
+so the member types the name first). These are Obsidian's markup rather
+than its API, so a future version could rename them; the failure modes
+are that Escape hides the window when it should have closed a find bar,
+which is what the previous version did anyway, and that the caret lands
+in the body of a new note instead of in its title. Nothing is written to
+those elements: the inline title is focused and its own text selected,
+and the rename that follows is the member typing into Obsidian's own
+field.
 
 **It writes notes under one folder of your vault.**
 `src/notes/store.ts` is the only module that creates or deletes a file.
@@ -131,7 +136,18 @@ Everything it does is scoped to files under the configured scratchpad
 folder (`owns()`); a note anywhere else in the vault is invisible to it.
 Creation is `Vault.create` and `Vault.createFolder`, one segment at a
 time, and deletion is `FileManager.trashFile`, which honours whatever
-trash you configured in Obsidian. **The plugin renames nothing.** A note
+trash you configured in Obsidian. **One note may be created outside that
+folder:** the "Daily note" action opens today's daily note at the path
+Obsidian's own core Daily notes plugin is configured to use, and creates
+it empty when it does not exist. To find that path the plugin reads that
+plugin's own settings file, `<configDir>/daily-notes.json`, through the
+public `Vault.adapter` with `Vault.configDir` (never with the config
+folder's name written out, and never through `app.internalPlugins`), and
+uses two fields of it, `folder` and `format`. An existing daily note is
+opened and never written to, the daily-note template is never rendered,
+and `test/hygiene.test.mjs` refuses `insertIntoFile`, `vault.append`,
+`vault.modify` and `vault.process` anywhere in `src/`: this plugin never
+writes into a file it did not create. **The plugin renames nothing.** A note
 is named from a date format when it is created and renamed only by the
 member typing in Obsidian's own inline title, which is Obsidian's rename
 with Obsidian's validation and link updating. Both the subfolder path and
@@ -179,7 +195,7 @@ ownership learns of it and releases the chord and the tray. The watcher
 is closed in `onunload` and on `beforeunload`, and a previous watcher is
 always closed before a new one opens.
 
-**It registers twelve commands**, bare ids, no default hotkeys
+**It registers fourteen commands**, bare ids, no default hotkeys
 (`test/manifest.test.mjs`), all from one table in `src/actions/table.ts`.
 
 **It stores eight settings.** `data.json` holds the eight keys in

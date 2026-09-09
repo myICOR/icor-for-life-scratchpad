@@ -29,12 +29,24 @@ changed, and a stored hotkey is the only setting that carries over.
   drag region on the title bar and the tab strip, both of which this
   window hides.
 - A character count at the bottom centre, updated as you type.
-- An actions palette with ten rows, each with a real command behind it:
-  New note, Duplicate note, Pin or unpin note, Browse notes, Toggle
-  always on top, Find in note, Copy note as Markdown, Copy note as plain
-  text, Open in main window, Delete note. All twelve commands (those plus
-  the palette and the show-or-hide toggle) are in Obsidian's command
-  palette and hotkeys page with no default hotkeys.
+- An actions palette with twelve rows, each with a real command behind
+  it: New unique note, Daily note, Subject note, Duplicate note, Pin or
+  unpin note, Browse notes, Toggle always on top, Find in note, Copy note
+  as Markdown, Copy note as plain text, Open in main window, Delete note.
+  All fourteen commands (those plus the palette and the show-or-hide
+  toggle) are in Obsidian's command palette and hotkeys page with no
+  default hotkeys.
+- The toolbar's plus glyph opens a menu with the three ways to make a
+  note: **New unique note** (named from the clock; pressing it again
+  inside the same minute opens the note you just made rather than
+  numbering a second one), **Daily note** (today's daily note where
+  Obsidian's own Daily notes plugin keeps it, read from that plugin's own
+  folder and format, opened untouched when it exists, created empty when
+  it does not, and never given the daily-note template, which is the core
+  plugin's job), and **Subject note** (an Untitled with the caret in the
+  inline title and the word selected, so you type the subject first). The
+  menu opens in the scratchpad window's own document rather than in
+  whichever window Obsidian last considered active.
 - Chords for those actions matched inside the scratchpad window only, by
   that window's own keydown listener against `event.code`, so the
   shortcut chips in the palette are true rather than decorative. None of
@@ -48,9 +60,9 @@ changed, and a stored hotkey is the only setting that carries over.
   configured Obsidian trash and the notice carries an Undo.
 - New notes are filed into a dated subfolder and named from the clock,
   both formats settings, defaulting to `YYYY/MM` and the core Unique note
-  creator's `YYYYMMDDHHmm`. Missing folders are created and a second note
-  in the same minute gets " 2". Renaming is Obsidian's own: the inline
-  title is shown in the window and typing in it renames the file.
+  creator's `YYYYMMDDHHmm`. Missing folders are created. Renaming is
+  Obsidian's own: the inline title is shown in the window and typing in it
+  renames the file.
 - Always on top, off by default, signalled by the anchor glyph and
   nothing else, re-applied on every show and whenever the window leaves
   fullscreen or unmaximises, because both clear it. Fullscreen and

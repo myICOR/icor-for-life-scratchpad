@@ -43,8 +43,9 @@ import type { Chrome } from './chrome';
 
 export interface WindowCallbacks {
   settings(): ScratchpadSettings;
-  /* A toolbar button, or a chord bound in the popout's scope. */
-  runAction(action: string): void;
+  /* A toolbar button, or a chord bound in the popout's scope. The anchor is
+     the button's own element, for the one action that opens a menu on it. */
+  runAction(action: string, anchor?: HTMLElement): void;
   /* The window moved or was resized; persist the rectangle. */
   onBounds(bounds: WindowBounds): void;
   /* The popout was really closed (Cmd-W, a tab drag, a quit). */
@@ -197,7 +198,7 @@ export class ScratchpadWindow {
   private mount(): void {
     const wsWin = this.wsWin;
     if (!wsWin || this.chrome) return;
-    this.chrome = mountChrome(wsWin.doc, (action) => this.cb.runAction(action));
+    this.chrome = mountChrome(wsWin.doc, (action, anchor) => this.cb.runAction(action, anchor));
     this.chrome.setAlwaysOnTop(this.readAlwaysOnTop());
     this.renderCount();
     this.watchSearch();
@@ -347,6 +348,33 @@ export class ScratchpadWindow {
        element that is no longer the one the search mounts into. */
     this.watchSearch();
     this.focusEditor();
+  }
+
+  /* The caret in Obsidian's own inline title, with the name selected, so
+     the first keystroke replaces it. That is what the subject note wants:
+     the member names the note first and types the body afterwards (Tom,
+     2026-09-09 evening). Returns false when the title is not in the
+     document, which is the member's "Show inline title" appearance setting
+     switched off; the caller then falls back to the body, because a note
+     that was created still has to be typeable.
+
+     `.inline-title` is Obsidian's markup rather than its API, like the two
+     search classes this file already reads; SECURITY.md names it with its
+     failure mode. Everything here is built off the element's OWN document
+     and window: a popout is a separate realm, and the global document in
+     this bundle is always the main window's. */
+  focusInlineTitle(): boolean {
+    const view = this.view;
+    const title = view?.contentEl.querySelector<HTMLElement>('.inline-title') ?? null;
+    if (!title) return false;
+    title.focus();
+    const selection = title.win.getSelection();
+    if (!selection) return false;
+    const range = title.doc.createRange();
+    range.selectNodeContents(title);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return true;
   }
 
   /* `toEnd` is for a note this plugin just created: the inline title is

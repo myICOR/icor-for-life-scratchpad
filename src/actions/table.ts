@@ -45,7 +45,16 @@
  * command glyph opens it, and a member can bind their own), and "Find in
  * note" carries none either: it runs Obsidian's own editor search, so the
  * member's own Cmd-F already does it and taking that chord would only
- * shadow the thing it calls. */
+ * shadow the thing it calls.
+ *
+ * THREE WAYS TO MAKE A NOTE (Tom, 2026-09-09 evening). The plus glyph on
+ * the toolbar opens a menu instead of running one action: a unique note
+ * named from the clock, today's daily note as Obsidian's own core plugin
+ * files it, and a subject note the member names first. All three are
+ * commands and all three are palette rows; only the unique note keeps a
+ * chord, because it is the one that was already bound and a chord nobody
+ * asked for is a key taken away inside the window. NEW_MENU_ACTIONS below
+ * is the menu, in order. */
 
 export type ChordModifier = 'Ctrl' | 'Alt' | 'Shift' | 'Mod';
 
@@ -62,6 +71,10 @@ export interface PaletteRow {
   /* The label and glyph when the action's state is flipped (Unpin note). */
   readonly altLabel?: string;
   readonly altIcon?: string;
+  /* The row still works with no note open, so the palette keeps it rather
+     than hiding it. The three note makers and the browse list; everything
+     else acts on the note in the window. */
+  readonly worksWithoutNote?: boolean;
 }
 
 export interface ActionDef {
@@ -78,6 +91,8 @@ export interface ActionDef {
 }
 
 export const ACTION_NEW_NOTE = 'new-note';
+export const ACTION_DAILY_NOTE = 'daily-note';
+export const ACTION_SUBJECT_NOTE = 'subject-note';
 export const ACTION_DUPLICATE_NOTE = 'duplicate-note';
 export const ACTION_TOGGLE_PIN = 'toggle-pin';
 export const ACTION_BROWSE_NOTES = 'browse-notes';
@@ -93,10 +108,27 @@ export const ACTION_TOGGLE_WINDOW = 'toggle-window';
 export const ACTIONS: readonly ActionDef[] = [
   {
     id: ACTION_NEW_NOTE,
-    name: 'New note',
-    icon: 'lucide-plus',
+    name: 'New unique note',
+    icon: 'lucide-file-plus',
     chord: { mods: ['Mod', 'Alt'], key: 'N' },
-    palette: { label: 'New note' },
+    palette: { label: 'New unique note', worksWithoutNote: true },
+  },
+  {
+    id: ACTION_DAILY_NOTE,
+    name: 'Daily note',
+    icon: 'lucide-calendar',
+    /* None: the two new makers are rows and menu items, and a chord that
+       is not asked for is a key taken from the member for as long as the
+       window has focus. Both are commands, so a member can bind one. */
+    chord: null,
+    palette: { label: 'Daily note', worksWithoutNote: true },
+  },
+  {
+    id: ACTION_SUBJECT_NOTE,
+    name: 'Subject note',
+    icon: 'lucide-pencil-line',
+    chord: null,
+    palette: { label: 'Subject note', worksWithoutNote: true },
   },
   {
     id: ACTION_DUPLICATE_NOTE,
@@ -117,7 +149,7 @@ export const ACTIONS: readonly ActionDef[] = [
     name: 'Browse notes',
     icon: 'lucide-files',
     chord: { mods: ['Mod', 'Shift'], key: 'P' },
-    palette: { label: 'Browse notes' },
+    palette: { label: 'Browse notes', worksWithoutNote: true },
   },
   {
     id: ACTION_TOGGLE_ALWAYS_ON_TOP,
@@ -183,6 +215,18 @@ export const ACTIONS: readonly ActionDef[] = [
 ];
 
 export const PALETTE_ACTIONS: readonly ActionDef[] = ACTIONS.filter((a) => a.palette !== null);
+
+/* The toolbar's plus glyph. Not an action id in the table above and not a
+   command: it opens the menu below, and every item in that menu IS one of
+   the commands. A member who wants a chord binds one of the three. */
+export const TOOL_NEW_MENU = 'open-new-menu';
+
+/* The three ways to make a note, in the order the menu shows them. The
+   order is the order of ACTIONS, so the palette and the menu list them the
+   same way and neither can drift from the other. */
+const NEW_MENU_IDS: readonly string[] = [ACTION_NEW_NOTE, ACTION_DAILY_NOTE, ACTION_SUBJECT_NOTE];
+
+export const NEW_MENU_ACTIONS: readonly ActionDef[] = ACTIONS.filter((a) => NEW_MENU_IDS.includes(a.id));
 
 /* Apple's display order for modifiers, which is not the order they are
    written in the table. */

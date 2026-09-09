@@ -25,15 +25,18 @@ import {
   ACTION_BROWSE_NOTES,
   ACTION_COPY_MARKDOWN,
   ACTION_COPY_PLAIN_TEXT,
+  ACTION_DAILY_NOTE,
   ACTION_DELETE_NOTE,
   ACTION_DUPLICATE_NOTE,
   ACTION_FIND_IN_NOTE,
   ACTION_NEW_NOTE,
   ACTION_OPEN_ACTIONS,
   ACTION_OPEN_IN_MAIN_WINDOW,
+  ACTION_SUBJECT_NOTE,
   ACTION_TOGGLE_ALWAYS_ON_TOP,
   ACTION_TOGGLE_PIN,
   ACTION_TOGGLE_WINDOW,
+  TOOL_NEW_MENU,
 } from './actions/table';
 import { PLUGIN_ID, PLUGIN_NAME, PROTOCOL_ACTION } from './constants';
 import { GlobalHotkey } from './electron/globalHotkey';
@@ -52,6 +55,7 @@ import { Ownership } from './ownership/ownership';
 import { DEFAULT_SETTINGS, normaliseSettings, rekeyForRename } from './settings/model';
 import type { ScratchpadSettings, WindowBounds } from './settings/model';
 import { ScratchpadSettingsTab } from './settings/SettingsTab';
+import { openNewMenu } from './window/newMenu';
 import { ScratchpadWindow } from './window/ScratchpadWindow';
 
 const NO_REMOTE = 'The scratchpad window, the menu bar icon and the global hotkey need the desktop process, which this build does not expose. The commands still work.';
@@ -82,7 +86,7 @@ export default class ScratchpadPlugin extends Plugin {
     this.notes = new NoteStore(this.app, () => this.settings);
     this.window = new ScratchpadWindow(this.app, {
       settings: () => this.settings,
-      runAction: (action) => void this.runAction(action),
+      runAction: (action, anchor) => void this.runAction(action, anchor),
       onBounds: (bounds) => void this.rememberBounds(bounds),
       onClosed: () => this.applySettings(),
       onFocus: () => this.onWindowFocus(),
@@ -345,26 +349,54 @@ export default class ScratchpadPlugin extends Plugin {
   }
 
   /* One dispatcher for the toolbar, the popout's own chords, the plugin's
-     commands and the tray, so all four can never drift apart. */
-  async runAction(action: string): Promise<void> {
+     commands and the tray, so all four can never drift apart. `anchor` is
+     set only by the toolbar, and only for the button that opens a menu on
+     itself. */
+  async runAction(action: string, anchor?: HTMLElement): Promise<void> {
     try {
-      await this.dispatch(action);
+      await this.dispatch(action, anchor);
     } catch (err) {
       new Notice(`${PLUGIN_NAME}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
-  private async dispatch(action: string): Promise<void> {
+  private async dispatch(action: string, anchor?: HTMLElement): Promise<void> {
     const file = this.window.file;
     switch (action) {
       case ACTION_TOGGLE_WINDOW:
         await this.toggleWindow();
         return;
+      case TOOL_NEW_MENU:
+        /* The toolbar's plus. Without its element there is nothing to hang
+           a menu on, and this is not a command, so nothing else can reach
+           this branch without one. */
+        if (anchor) openNewMenu(anchor, (id) => void this.runAction(id));
+        return;
       case ACTION_NEW_NOTE: {
-        const created = await this.notes.create();
+        /* A second press inside the same minute opens the note that is
+           already there rather than making " 2"; the store decides. */
+        const created = await this.notes.uniqueNote();
         await this.openInWindow(created);
         /* In the body, past the end, never in the inline title. */
         this.window.focusEditor(true);
+        return;
+      }
+      case ACTION_DAILY_NOTE: {
+        const daily = await this.notes.dailyNote();
+        await this.openInWindow(daily);
+        /* Past the end of whatever is already in it. Opening an existing
+           daily note never changes a byte of it. */
+        this.window.focusEditor(true);
+        return;
+      }
+      case ACTION_SUBJECT_NOTE: {
+        const created = await this.notes.subjectNote();
+        await this.openInWindow(created);
+        /* The caret goes into the inline title with "Untitled" selected, so
+           the member types the subject straight over it. With the inline
+           title switched off in the appearance settings there is nothing to
+           put it in, and the body is the honest second best. */
+        if (!this.window.focusInlineTitle()) this.window.focusEditor(true);
         return;
       }
       case ACTION_DUPLICATE_NOTE: {

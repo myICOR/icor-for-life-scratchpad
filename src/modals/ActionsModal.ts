@@ -16,8 +16,8 @@ import { addKeys, buildRow } from './rows';
 export interface ActionsContext {
   /* The pin row flips its label and its glyph on the current note. */
   readonly pinned: boolean;
-  /* False disables the rows that need one (everything but New note and
-     Browse notes) rather than letting them fail silently. */
+  /* False hides the rows that need one (everything but the three note
+     makers and Browse notes) rather than letting them fail silently. */
   readonly hasNote: boolean;
 }
 
@@ -30,11 +30,7 @@ export class ActionsModal extends FuzzySuggestModal<ActionDef> {
   }
 
   override getItems(): ActionDef[] {
-    return [...PALETTE_ACTIONS].filter((action) => this.context.hasNote || this.needsNoNote(action));
-  }
-
-  private needsNoNote(action: ActionDef): boolean {
-    return action.id === 'new-note' || action.id === 'browse-notes';
+    return [...PALETTE_ACTIONS].filter((action) => this.context.hasNote || action.palette?.worksWithoutNote === true);
   }
 
   override getItemText(action: ActionDef): string {

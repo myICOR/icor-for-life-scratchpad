@@ -35,8 +35,13 @@ not add itself to your login items.
   applications when you turn that on.
 - **It creates and deletes notes under one folder,** the scratchpad
   folder you pick. Deleting goes to whatever trash you have configured in
-  Obsidian, and the notice that follows carries an Undo. It never touches
-  a note outside that folder, and it never renames one behind your back.
+  Obsidian, and the notice that follows carries an Undo. It never renames
+  a note behind your back. One exception to the folder: the **Daily
+  note** item opens today's daily note where Obsidian's own Daily notes
+  plugin is set to keep it, which may be somewhere else, and creates it
+  empty when it is not there yet. To find that place it reads that
+  plugin's own settings file inside your vault's configuration folder,
+  and nothing else in it.
 - **It listens for one link:** `obsidian://icor-scratchpad`. The `text`
   parameter is treated as plain text and becomes the body of a new note;
   it is never rendered as HTML.
@@ -89,7 +94,7 @@ at all.
 | Anchor | Always on top, on and off. It turns the accent colour when it is on |
 | Command | The actions palette |
 | Files | Browse notes |
-| Plus | A new note |
+| Plus | A menu: New unique note, Daily note, Subject note |
 
 **The count** at the bottom centre is the number of characters in the
 note, updated as you type.
@@ -113,12 +118,31 @@ remembers is the one you gave the window, never the whole screen.
 Every note is a normal markdown file under your scratchpad folder
 (`00 Daily Scratchpad` by default, changeable under Settings).
 
-**A new note is filed by date and named from the clock.** With the
-defaults, a note made today lands in `00 Daily Scratchpad/2026/09/` and
-is called `202609091812`, which is what Obsidian's core Unique note
-creator would call it. Both formats are settings: the subfolder
-(`YYYY/MM`, empty for none) and the name (`YYYYMMDDHHmm`). Missing
-folders are created. A second note in the same minute gets " 2".
+**The plus glyph opens a menu with three ways to make one.**
+
+- **New unique note** is filed by date and named from the clock. With the
+  defaults, a note made today lands in `00 Daily Scratchpad/2026/09/` and
+  is called `202609091812`, which is what Obsidian's core Unique note
+  creator would call it. Both formats are settings: the subfolder
+  (`YYYY/MM`, empty for none) and the name (`YYYYMMDDHHmm`). Missing
+  folders are created. Press it twice inside the same minute and you get
+  the note you just made, not a second one: the name is the minute, so
+  there is nothing to number.
+- **Daily note** opens today's daily note, exactly where Obsidian's own
+  Daily notes plugin puts it. The plugin reads that plugin's own folder
+  and date format, so the two always agree; with the core plugin switched
+  off it falls back to its default, `YYYY-MM-DD` at the vault root. If
+  the note is already there it is opened and not touched. If it is not,
+  it is created empty, with its folders. **Your daily note template is
+  not applied here** on purpose: that is the core plugin's job, and
+  rendering it in two places would give you two subtly different daily
+  notes.
+- **Subject note** makes an `Untitled` in today's subfolder and puts the
+  cursor in the title with the word selected, so you type the subject
+  first and the body after. A second one is `Untitled 2`.
+
+Option-Cmd-N still makes a unique note directly, and all three are
+commands you can bind your own keys to.
 
 **You rename a note by typing in its title,** at the top of the window.
 That title is Obsidian's own, so the rules and the link updating are
@@ -142,7 +166,9 @@ keys to any of them.
 
 | Action | In the window |
 | --- | --- |
-| New note | Option-Cmd-N |
+| New unique note | Option-Cmd-N |
+| Daily note | bind your own |
+| Subject note | bind your own |
 | Duplicate note | Shift-Cmd-D |
 | Pin note / Unpin note | Option-Cmd-P |
 | Browse notes | Shift-Cmd-P |
@@ -162,8 +188,10 @@ arrow keys still walk the matches. On Windows and Linux, Cmd is Ctrl.
 **Inside the window a chord does take over**, so none of the ones above
 collide with an Obsidian default: every chord was checked against the
 1.13.7 hotkey table and the test suite holds that list. That is why New
-note is Option-Cmd-N rather than Cmd-N (Cmd-N and Shift-Cmd-N are both
-core), why Browse notes is Shift-Cmd-P rather than Cmd-P (the command
+unique note is Option-Cmd-N rather than Cmd-N (Cmd-N and Shift-Cmd-N are
+both core), why the daily note and the subject note carry no chord at all
+(they are on the plus menu, and a chord nobody asked for is a key taken
+away inside the window), why Browse notes is Shift-Cmd-P rather than Cmd-P (the command
 palette), and why the actions palette has no chord at all (Cmd-K inserts
 a tag). Open the palette from the command glyph in the toolbar, or give
 it a hotkey of your own under Settings, Hotkeys. Find in note runs

@@ -250,3 +250,68 @@ test('the delete is the host trash with an undo, and never a confirm dialog', ()
   assert.match(store, /text: 'Undo'/);
   assert.doesNotMatch(store, /confirm|promptForDeletion/, 'a confirm on a reversible action trains the member to click through dialogs');
 });
+
+test('the plus opens a menu mounted in the popout own document, with the three items and their icons', () => {
+  /* Menu.showAtPosition falls back to `activeDocument` when no document is
+     given, and activeWindow only moves on a real DOM focus event, so a menu
+     opened without naming the document can land in the main window (the
+     same trap the modals wait on whenFocused for). Naming the anchor's own
+     document settles it for both menu paths: the DOM menu appends to
+     doc.body and the native one pops on doc.win's own BrowserWindow. */
+  const menu = strip(read('src/window/newMenu.ts'));
+  assert.match(menu, /menu\.showAtPosition\(\{[^}]*\}, anchor\.doc\)/, 'the popout own document is named');
+  assert.doesNotMatch(menu, /activeDocument|activeWindow|\bdocument\b/, 'never the ambient document');
+  assert.match(menu, /for \(const action of NEW_MENU_ACTIONS\)/, 'one table behind the menu, the palette and the commands');
+  assert.match(menu, /item\.setIcon\(action\.icon\)/);
+  assert.match(menu, /menu\.setUseNativeMenu\(false\)/, 'a native menu carries no icons');
+  /* It hangs off the button's rectangle, right-aligned, because the pill
+     sits in the top right corner. */
+  assert.match(menu, /const rect = anchor\.getBoundingClientRect\(\)/);
+  assert.match(menu, /x: rect\.x, y: rect\.bottom, width: rect\.width, overlap: true, left: true/);
+});
+
+test('the toolbar hands its own element to the action that opens a menu on it', () => {
+  const chrome = strip(read('src/window/chrome.ts'));
+  assert.match(chrome, /onAction\(button\.action, el\)/, 'the button passes itself');
+  assert.match(chrome, /if \(button\.opensMenu\) el\.setAttribute\('aria-haspopup', 'menu'\)/, 'a screen reader is told it opens something');
+  assert.match(chrome, /action: TOOL_NEW_MENU, icon: 'lucide-plus'/, 'the plus is the one that opens it');
+  assert.match(src, /mountChrome\(wsWin\.doc, \(action, anchor\) => this\.cb\.runAction\(action, anchor\)\)/);
+  /* And the branch that draws the menu cannot be reached without one: it is
+     not a command, so nothing but the toolbar dispatches it. */
+  const main = strip(read('src/main.ts'));
+  assert.match(main, /case TOOL_NEW_MENU:[\s\S]*?if \(anchor\) openNewMenu\(anchor, \(id\) => void this\.runAction\(id\)\);/);
+});
+
+test('the subject note puts the caret in the inline title, and falls back to the body when it is hidden', () => {
+  const main = strip(read('src/main.ts'));
+  const block = main.slice(main.indexOf('case ACTION_SUBJECT_NOTE'), main.indexOf('case ACTION_DUPLICATE_NOTE'));
+  assert.match(block, /await this\.notes\.subjectNote\(\)/);
+  assert.match(block, /if \(!this\.window\.focusInlineTitle\(\)\) this\.window\.focusEditor\(true\)/, 'a note that was created still has to be typeable');
+  /* The selection is built in the element's OWN realm: a popout is a
+     separate document and the global one here is always the main window's. */
+  const body = src.slice(src.indexOf('focusInlineTitle(): boolean {'));
+  const fn = body.slice(0, body.indexOf('\n  }'));
+  assert.match(fn, /view\?\.contentEl\.querySelector<HTMLElement>\('\.inline-title'\)/);
+  assert.match(fn, /title\.win\.getSelection\(\)/);
+  assert.match(fn, /title\.doc\.createRange\(\)/);
+  assert.match(fn, /range\.selectNodeContents\(title\)/, 'the name is selected, so the first keystroke replaces it');
+  assert.doesNotMatch(fn, /\bwindow\.|\bdocument\./, 'never the main window realm');
+});
+
+test('the daily note and the unique note both open what is already there', () => {
+  const main = strip(read('src/main.ts'));
+  for (const [action, maker] of [['ACTION_NEW_NOTE', 'uniqueNote'], ['ACTION_DAILY_NOTE', 'dailyNote']]) {
+    const block = main.slice(main.indexOf(`case ${action}`));
+    assert.match(block.slice(0, 400), new RegExp(`await this\\.notes\\.${maker}\\(\\)`), `${action} calls ${maker}`);
+  }
+  /* The unique note does NOT number a collision any more; the store's
+     resolveName decides, and only the content-carrying create() numbers. */
+  const store = strip(read('src/notes/store.ts'));
+  const unique = store.slice(store.indexOf('async uniqueNote('));
+  const block = unique.slice(0, unique.indexOf('\n  }'));
+  assert.match(block, /resolveName\(wanted, this\.takenIn\(folder\), 'open'\)/);
+  assert.match(block, /if \(resolved\.existing\) \{[\s\S]*?if \(found instanceof TFile\) return found;/);
+  assert.doesNotMatch(block, /uniqueName\(/, 'the " 2" suffix is gone from this path');
+  const subject = store.slice(store.indexOf('async subjectNote('));
+  assert.match(subject.slice(0, subject.indexOf('\n  }')), /resolveName\(UNTITLED, this\.takenIn\(folder\), 'number'\)/);
+});

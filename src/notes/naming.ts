@@ -111,6 +111,26 @@ export function joinPath(...parts: string[]): string {
   return parts.filter((part) => part !== '').join('/');
 }
 
+/* The two answers a new note can give to a name that is already taken.
+   'open' is the unique note's: the name IS the minute, so a second press
+   inside the same minute means the member wants that note again rather
+   than a second one called " 2" (Tom, 2026-09-09 evening). 'number' is the
+   subject note's and the duplicate's: those are asked for by name, so a
+   second one is a second file. */
+export type CollisionRule = 'open' | 'number';
+
+export interface ResolvedName {
+  readonly name: string;
+  /* True only under 'open', and only when that name is already on disk. */
+  readonly existing: boolean;
+}
+
+export function resolveName(base: string, taken: ReadonlySet<string>, rule: CollisionRule): ResolvedName {
+  if (rule === 'number') return { name: uniqueName(base, taken), existing: false };
+  const lower = new Set([...taken].map((t) => t.toLowerCase()));
+  return { name: base, existing: lower.has(base.toLowerCase()) };
+}
+
 /* `base`, or `base 2`, `base 3` and so on until the name is free. The
    compare is case-insensitive because APFS and NTFS are: `Notes` and
    `notes` are one file there, and a rename onto the other spelling fails. */

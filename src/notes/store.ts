@@ -12,7 +12,9 @@
 import { FileSystemAdapter, Notice, TFile, TFolder, moment, normalizePath } from 'obsidian';
 import type { App } from 'obsidian';
 import { CLASS_PREFIX } from '../constants';
-import { UNTITLED, joinPath, sanitiseName, sanitisePath, uniqueName } from './naming';
+import { UNTITLED, joinPath, resolveName, sanitiseName, sanitisePath, uniqueName } from './naming';
+import { dailyNotePath, normaliseDailyOptions } from './daily';
+import type { DailyNoteOptions } from './daily';
 import type { ScratchpadSettings } from '../settings/model';
 
 export class NoteStore {
@@ -84,13 +86,79 @@ export class NoteStore {
   }
 
   /* A new note, named from the newNoteFormat setting, in today's subfolder.
-     A second note in the same minute gets " 2", a third " 3". */
+     A second note in the same minute gets " 2", a third " 3". This is the
+     path with CONTENT on it (the obsidian:// door, and the undo of a delete
+     whose original path came back): the text has to land somewhere of its
+     own, so a taken name is answered with a number rather than by opening
+     the note that is already there. */
   async create(text = ''): Promise<TFile> {
     const folder = this.targetFolder();
     await this.ensureFolder(folder);
     const wanted = sanitiseName(moment().format(this.settings().newNoteFormat)) || UNTITLED;
     const name = uniqueName(wanted, this.takenIn(folder));
     return this.app.vault.create(this.pathFor(folder, name), text);
+  }
+
+  /* The unique note: today's subfolder, named from the clock. A second
+     press inside the same minute OPENS that note rather than making a
+     second one called " 2" (Tom, 2026-09-09 evening): the name IS the
+     minute, so a member asking again inside it is asking for the note they
+     just made. Opening never touches the content. */
+  async uniqueNote(): Promise<TFile> {
+    const folder = this.targetFolder();
+    const wanted = sanitiseName(moment().format(this.settings().newNoteFormat)) || UNTITLED;
+    const resolved = resolveName(wanted, this.takenIn(folder), 'open');
+    const path = this.pathFor(folder, resolved.name);
+    if (resolved.existing) {
+      const found = this.app.vault.getAbstractFileByPath(path);
+      if (found instanceof TFile) return found;
+    }
+    await this.ensureFolder(folder);
+    return this.app.vault.create(path, '');
+  }
+
+  /* The subject note: an Untitled in today's subfolder, whose whole point
+     is that the member names it first, so a second one is a second file and
+     gets " 2". main.ts puts the caret in the inline title. */
+  async subjectNote(): Promise<TFile> {
+    const folder = this.targetFolder();
+    await this.ensureFolder(folder);
+    const resolved = resolveName(UNTITLED, this.takenIn(folder), 'number');
+    return this.app.vault.create(this.pathFor(folder, resolved.name), '');
+  }
+
+  /* Today's daily note, where Obsidian's own core plugin files it: its
+     folder, its format, its path. An existing one is OPENED and never
+     touched; a missing one is created empty, with its folders. The template
+     is deliberately NOT applied: rendering it here would write a second,
+     subtly different daily note beside the core plugin's own (Tom,
+     2026-09-09 evening). */
+  async dailyNote(at: Date = new Date()): Promise<TFile> {
+    const path = normalizePath(dailyNotePath(await this.dailyOptions(), (format) => moment(at).format(format)));
+    const found = this.app.vault.getAbstractFileByPath(path);
+    if (found instanceof TFile) return found;
+    if (found instanceof TFolder) throw new Error(`${path} is a folder, not a note.`);
+    await this.ensureFolder(path.slice(0, Math.max(0, path.lastIndexOf('/'))));
+    return this.app.vault.create(path, '');
+  }
+
+  /* The core Daily notes plugin's own settings file, read through the
+     public vault adapter and vault.configDir: never app.internalPlugins,
+     which would be a third private surface, and never with the config
+     folder spelled out. Missing, unreadable or not JSON all mean the same
+     thing, the core defaults, which is also what a vault with the plugin
+     switched off would use. Read on every call, because the member can
+     change the format in the settings tab at any time. */
+  private async dailyOptions(): Promise<DailyNoteOptions> {
+    const path = normalizePath(`${this.app.vault.configDir}/daily-notes.json`);
+    try {
+      if (await this.app.vault.adapter.exists(path)) {
+        return normaliseDailyOptions(JSON.parse(await this.app.vault.adapter.read(path)));
+      }
+    } catch {
+      /* not readable, or not JSON: the defaults are the answer */
+    }
+    return normaliseDailyOptions(null);
   }
 
   /* A duplicate stays beside its original rather than moving to today's

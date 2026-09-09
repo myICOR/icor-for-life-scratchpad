@@ -5,6 +5,7 @@ export * from '../src/constants';
 export * from '../src/actions/table';
 export * from '../src/hotkey/accelerator';
 export * from '../src/notes/naming';
+export * from '../src/notes/daily';
 export * from '../src/window/escape';
 export * from '../src/notes/meta';
 export * from '../src/notes/plain';

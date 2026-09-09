@@ -48,14 +48,22 @@ test('no em dash or en dash anywhere in the repo text', () => {
   assert.deepEqual(hits, [], `dashes at:\n  ${hits.join('\n  ')}`);
 });
 
-test('nothing of the dropped daily-note plugin is left in the tree', () => {
+test('nothing of the dropped capture box is left in the tree, and nothing appends to a daily note', () => {
   /* src/ only: test/settings.test.mjs names the old keys on purpose, to
-     assert that a data.json carrying them normalises them away. */
+     assert that a data.json carrying them normalises them away.
+
+     `DailyNote` left this list on 2026-09-09 evening, when the plus menu
+     gained a "Daily note" item that OPENS Obsidian's own daily note (a
+     type called DailyNoteOptions is not the capture box). What the ban was
+     really protecting is below it and is now written out: the dropped
+     plugin appended a line to the daily note, and nothing in this one may
+     ever write into a file it did not create. */
   for (const f of sources) {
     const text = readFileSync(f, 'utf8');
-    assert.doesNotMatch(text, /dailyFolder|dailyFormat|appendTemplate|CaptureModal|DailyNote|quick-notes-menu|icor-qnm-/, `${rel(f)} still carries the daily-note plugin`);
+    assert.doesNotMatch(text, /dailyFolder|dailyFormat|appendTemplate|CaptureModal|quick-notes-menu|icor-qnm-/, `${rel(f)} still carries the dropped capture box`);
+    assert.doesNotMatch(strip(text), /insertIntoFile|vault\.append|vault\.modify|vault\.process/, `${rel(f)} writes into a note the member already has`);
   }
-  for (const gone of ['src/daily', 'src/capture', 'test/daily.test.mjs']) {
+  for (const gone of ['src/capture', 'src/modals/CaptureModal.ts']) {
     assert.throws(() => statSync(resolve(repo, gone)), `${gone} still exists`);
   }
 });

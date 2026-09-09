@@ -2,7 +2,7 @@
  * rows. If a chip and a chord could disagree, this file is where it shows. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ACTIONS, PALETTE_ACTIONS, actionById, chordCode, chordGlyphs, matchChord } from './build/pure.mjs';
+import { ACTIONS, NEW_MENU_ACTIONS, PALETTE_ACTIONS, TOOL_NEW_MENU, actionById, chordCode, chordGlyphs, matchChord } from './build/pure.mjs';
 
 test('ids are bare, unique, and never name the plugin or the word command', () => {
   const ids = ACTIONS.map((a) => a.id);
@@ -39,11 +39,11 @@ test('no two actions bind the same chord', () => {
   }
 });
 
-test('the palette is exactly the ten rows with a command behind them', () => {
-  assert.equal(PALETTE_ACTIONS.length, 10);
+test('the palette is exactly the twelve rows with a command behind them', () => {
+  assert.equal(PALETTE_ACTIONS.length, 12);
   assert.deepEqual(
     PALETTE_ACTIONS.map((a) => a.id),
-    ['new-note', 'duplicate-note', 'toggle-pin', 'browse-notes', 'toggle-always-on-top', 'find-in-note', 'copy-note-as-markdown', 'copy-note-as-plain-text', 'open-in-main-window', 'delete-note'],
+    ['new-note', 'daily-note', 'subject-note', 'duplicate-note', 'toggle-pin', 'browse-notes', 'toggle-always-on-top', 'find-in-note', 'copy-note-as-markdown', 'copy-note-as-plain-text', 'open-in-main-window', 'delete-note'],
   );
   /* The palette itself and the show-or-hide toggle are commands but not
      rows: the palette would list itself, and the global chord owns the
@@ -102,17 +102,54 @@ test('no chord shadows a core default, because inside the window it would take t
   assert.deepEqual(clashes, [], `chords that shadow a core command:\n  ${clashes.join('\n  ')}`);
 });
 
-test('the two rows that carry no chord are the two that should not', () => {
+/* Every action that deliberately carries no chord, with the reason on the
+   row. A chord nobody asked for is a key taken away from the member for as
+   long as the scratchpad window has focus, so this list is the place a new
+   one has to argue for itself. */
+const CHORDLESS = {
+  'find-in-note': "it runs Obsidian's own editor search, so Mod+F would shadow the command the row calls",
+  'open-actions': 'the toolbar opens it and Mod+K is editor:insert-tag',
+  'toggle-window': 'the global chord owns it',
+  'daily-note': 'it is a menu item and a command; the member binds one if they want one',
+  'subject-note': 'the same',
+};
+
+test('the rows that carry no chord are exactly the ones that should not', () => {
   const chordless = ACTIONS.filter((a) => a.chord === null).map((a) => a.id).sort();
-  assert.deepEqual(chordless, ['find-in-note', 'open-actions', 'toggle-window']);
-  /* find-in-note runs Obsidian's own editor search, so taking Mod+F would
-     shadow the very command the row calls; the actions palette is on the
-     toolbar and Mod+K is editor:insert-tag; the global chord owns the
-     window toggle. Every other palette row has one. */
+  assert.deepEqual(chordless, Object.keys(CHORDLESS).sort());
   for (const action of PALETTE_ACTIONS) {
-    if (action.id === 'find-in-note') continue;
+    if (action.id in CHORDLESS) continue;
     assert.ok(action.chord, `${action.id} has no chord`);
   }
+  /* The unique note keeps the chord it was given, because it is the one
+     that was already bound before the menu existed (Tom, 2026-09-09). */
+  assert.deepEqual(actionById('new-note').chord, { mods: ['Mod', 'Alt'], key: 'N' });
+});
+
+test('the plus menu is exactly the three note makers, in that order', () => {
+  assert.equal(NEW_MENU_ACTIONS.length, 3);
+  assert.deepEqual(NEW_MENU_ACTIONS.map((a) => a.id), ['new-note', 'daily-note', 'subject-note']);
+  assert.deepEqual(NEW_MENU_ACTIONS.map((a) => a.name), ['New unique note', 'Daily note', 'Subject note']);
+  /* The menu draws the same glyphs as the palette rows and the commands,
+     because it reads the same records. */
+  assert.deepEqual(NEW_MENU_ACTIONS.map((a) => a.icon), ['lucide-file-plus', 'lucide-calendar', 'lucide-pencil-line']);
+  /* Every item is a real command, so a member can bind any of the three. */
+  for (const action of NEW_MENU_ACTIONS) assert.equal(actionById(action.id), action);
+  /* The order is the table's, not a second list that could drift from it. */
+  const inTable = ACTIONS.filter((a) => NEW_MENU_ACTIONS.includes(a));
+  assert.deepEqual(inTable, [...NEW_MENU_ACTIONS]);
+});
+
+test('the button that opens the menu is not itself a command', () => {
+  /* It has no name, no icon of its own and no hotkeys page entry: it opens
+     the three that do. */
+  assert.equal(TOOL_NEW_MENU, 'open-new-menu');
+  assert.equal(actionById(TOOL_NEW_MENU), undefined);
+});
+
+test('the rows that work with no note open are the three makers and the browse list', () => {
+  const withoutNote = PALETTE_ACTIONS.filter((a) => a.palette.worksWithoutNote === true).map((a) => a.id);
+  assert.deepEqual(withoutNote, ['new-note', 'daily-note', 'subject-note', 'browse-notes']);
 });
 
 

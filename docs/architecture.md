@@ -27,8 +27,10 @@ src/ownership/ownership.ts   the ownership state machine over those two modules
 src/window/ScratchpadWindow.ts the popout: open, adopt, show, hide, chrome, chords, Escape, bounds
 src/window/chrome.ts         the drag strip, the floating toolbar and the count line inside the popout
 src/window/escape.ts         pure: what Escape means, as one ordered decision
-src/notes/store.ts           the scratchpad folder: list, target folder, create, duplicate, trash
-src/notes/naming.ts          pure: sanitise a name and a path, dedupe, the browse preview
+src/window/newMenu.ts        the plus glyph's dropdown: the three note makers, in the popout's document
+src/notes/store.ts           the scratchpad folder: list, target folder, the three makers, duplicate, trash
+src/notes/naming.ts          pure: sanitise a name and a path, resolve a collision, the browse preview
+src/notes/daily.ts           pure: the core Daily notes plugin's folder and format -> today's path
 src/notes/meta.ts            pure: the count text, the relative time, the group order
 src/notes/plain.ts           pure: markdown to the text a reader sees
 src/modals/ActionsModal.ts   the actions palette (FuzzySuggestModal)
@@ -38,8 +40,19 @@ styles.css                   Obsidian variables only, every selector anchored on
 ```
 
 `src/actions/table.ts` is the piece worth knowing about. The commands, the
-chords the popout binds and the palette rows are one array, so a shortcut
-chip cannot claim a key that nothing registers.
+chords the popout binds, the palette rows and the plus glyph's menu are
+one array, so a shortcut chip cannot claim a key that nothing registers
+and a menu item cannot exist without a command behind it.
+
+The three ways to make a note all end in `src/notes/store.ts` and differ
+only in how they answer a name that is already taken: the unique note
+OPENS it (the name is the minute, so a second press inside that minute
+means the same note), the subject note numbers it (it is asked for by
+name), and the daily note is Obsidian's own, at the path the core plugin
+would use, opened untouched when it is there and created empty when it is
+not. The core plugin's folder and format are read from its own settings
+file through `vault.adapter` and `vault.configDir`, never through
+`app.internalPlugins`, which would be a third private surface.
 
 ## The three process boundaries
 
@@ -67,7 +80,7 @@ holds that allowlist.
 onload
   loadData -> normaliseSettings
   NoteStore, ScratchpadWindow
-  addCommand x12 from ACTIONS, registerObsidianProtocolHandler
+  addCommand x14 from ACTIONS, registerObsidianProtocolHandler
   on('editor-change') -> count;  vault.on('rename') -> rekey the pin and the opened time
   workspace.on('window-close') -> forget the popout
   getRemote() -> GlobalHotkey, registerDomEvent(window, 'beforeunload')
