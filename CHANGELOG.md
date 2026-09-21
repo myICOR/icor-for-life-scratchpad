@@ -4,6 +4,14 @@ All notable changes to ICOR for Life - Scratchpad.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-09-21
+
+### Changed
+- Relicensed under MIT. Releases before 0.2.0 remain under the ICOR for Life
+  Source-Available License (Code) v1.0.
+- Release workflow: actions pinned to commit SHAs, the release published with `gh`, and a release run can never mint its own tag.
+- README rewritten for the person installing the plugin, not the person rebuilding it.
+
 ## [0.1.0] - 2026-09-09
 
 First release. It was built once as "Quick Notes Menu", a capture box that
