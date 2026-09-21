@@ -59,7 +59,15 @@ without you.
 
 The plugin answers an `obsidian://icor-scratchpad` link, so anything that can
 open a URL can hand it a note: a launcher, Shortcuts, a script. The settings
-screen shows you the exact link for your vault, ready to paste.
+screen shows you the exact link for your vault, ready to paste. It looks like
+this:
+
+```
+obsidian://icor-scratchpad?vault=<vault name>&text=<url-encoded text>
+```
+
+With `text`, a new note is created with that text and the window comes
+forward. Without `text`, the window just comes forward.
 
 ## Settings
 
