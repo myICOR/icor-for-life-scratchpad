@@ -125,3 +125,18 @@ export function browseMetaText(row: NoteRow, now: number, sort: BrowseSort = 'mo
   const when = row.current ? 'Current' : row.pinned ? openedAgoText(row.lastOpened, now) : sortAgoText(row, sort, now);
   return row.preview === '' ? `${when} · ${count}` : `${row.preview} · ${when} · ${count}`;
 }
+
+/* The note the window resumes on: of the notes still in the folder, the
+   one the member most recently opened IN THE WINDOW, or null when none of
+   them ever was. Never by mtime: a file something else just wrote (a
+   script's empty link target, a sync) is not the note the member left the
+   window on, and an empty one looks exactly like a fresh blank note. */
+export function resumePath(paths: readonly string[], opened: Readonly<Record<string, number>>): string | null {
+  let best: string | null = null;
+  for (const path of paths) {
+    const at = opened[path];
+    if (at === undefined) continue;
+    if (best === null || at > (opened[best] ?? 0)) best = path;
+  }
+  return best;
+}
