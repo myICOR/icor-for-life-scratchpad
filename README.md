@@ -2,8 +2,8 @@
 
 **Catch a thought without losing what you were doing.**
 
-Press your hotkey in any application. A small note window comes forward,
-already blank, ready to type. Press it again and it is gone. The thought is
+Press your hotkey in any application. A small note window comes forward on
+the note you last had in it, or a blank one, ready to type. Press it again and it is gone. The thought is
 in your vault as a normal note, and you never left the app you were in.
 
 Part of the [ICOR for Life](https://myicor.com) suite.
@@ -36,7 +36,9 @@ That is the whole setup. Everything below is optional.
 
 ## The window
 
-A narrow window with your last note in it. It floats above other applications
+A narrow window with your last note in it: the one you last opened in this
+window, never a file something else just wrote, and a new note when there is
+none. It floats above other applications
 if you want it to, and it remembers where you left it.
 
 Along the bottom: a new note, the actions menu, and the note list. The list

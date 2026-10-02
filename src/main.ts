@@ -47,6 +47,7 @@ import type { TrayActions } from './electron/tray';
 import { materialiseTrayIcon } from './electron/trayIcon';
 import { ActionsModal } from './modals/ActionsModal';
 import { BrowseModal } from './modals/BrowseModal';
+import { resumePath } from './notes/meta';
 import type { BrowseSort, NoteRow } from './notes/meta';
 import { previewFromContent } from './notes/naming';
 import { toPlainText } from './notes/plain';
@@ -309,20 +310,20 @@ export default class ScratchpadPlugin extends Plugin {
     void this.saveSettings();
   }
 
-  /* The note the window opens on: the one most recently opened, else the
-     most recently changed, else a fresh Untitled. */
+  /* The note the window opens on: the one most recently opened in the
+     window, else a fresh note. Never the most recently changed: see
+     resumePath(). */
   private async pickFile(): Promise<TFile | null> {
     const files = this.notes.list();
-    if (files.length === 0) {
-      try {
-        return await this.notes.create();
-      } catch (err) {
-        new Notice(`The scratchpad folder could not be used: ${err instanceof Error ? err.message : String(err)}`);
-        return null;
-      }
+    const path = resumePath(files.map((f) => f.path), this.settings.lastOpened);
+    const resumed = files.find((f) => f.path === path);
+    if (resumed) return resumed;
+    try {
+      return await this.notes.create();
+    } catch (err) {
+      new Notice(`The scratchpad folder could not be used: ${err instanceof Error ? err.message : String(err)}`);
+      return null;
     }
-    const opened = this.settings.lastOpened;
-    return [...files].sort((a, b) => (opened[b.path] ?? b.stat.mtime) - (opened[a.path] ?? a.stat.mtime))[0] ?? null;
   }
 
   async toggleWindow(): Promise<void> {
