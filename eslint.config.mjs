@@ -23,7 +23,7 @@ export default defineConfig([
     plugins: { obsidianmd },
     rules: {
       'obsidianmd/ui/sentence-case': ['warn', {
-        brands: ['ICOR', 'Obsidian', 'Raycast', 'Alfred', 'Shortcuts'],
+        brands: ['ICOR', 'Obsidian', 'Daily notes'],
         acronyms: ['ID', 'URL'],
       }],
     },

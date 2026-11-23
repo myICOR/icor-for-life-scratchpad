@@ -32,17 +32,12 @@ const textFiles = ['README.md', 'SECURITY.md', 'THIRD-PARTY-NOTICES.md', 'CHANGE
 const sources = walk(resolve(repo, 'src'), ['.ts']);
 const rel = (f) => f.slice(repo.length + 1);
 
-/* Node's fs and path, and the name of the config folder, are allowed in
-   exactly these two modules and nowhere else: everything cross-vault lives
-   behind them, so the review surface stays two files wide. Adding a third
-   is a Vex gate (Vex M-6, 2026-09-09). */
-const NODE_ALLOWED = new Set(['src/electron/ownerRecord.ts', 'src/electron/vaultRegistry.ts']);
-
-/* The three reaches past the public API live in main.ts and nowhere else:
-   app.setting, app.commands and app.plugins. Same shape as the Node
-   allowlist above and for the same reason: a ban that has to be relaxed
-   becomes a named exception, never a deleted line (Vex M-6). */
-const PRIVATE_API_ALLOWED = new Set(['src/main.ts']);
+/* 0.2 allowed Node's fs in two modules (the owner record and the vault
+   list) and three reaches past the public API in main.ts (app.setting,
+   app.commands, app.plugins). All five exceptions went with the parts that
+   needed them (Tom, 2026-11-23), so the bans below have no allowlist at
+   all. A ban that has to be relaxed again becomes a named exception, never
+   a deleted line (Vex M-6). */
 
 test('no em dash or en dash anywhere in the repo text', () => {
   const hits = [];
@@ -100,35 +95,13 @@ test('every register of the chord is preceded by an unregister of the same chord
   assert.match(src, /if \(!ok\)[\s\S]*new Notice/, 'a false return is shown as a Notice');
 });
 
-test('main-process state is released on unload and on beforeunload, and the tray reference is module-level', () => {
+test('the chord is released on unload and on beforeunload', () => {
   const main = strip(read('src/main.ts'));
-  assert.match(main, /registerDomEvent\(window, 'beforeunload'/, 'Cmd-R reload skips onunload');
-  assert.match(main, /onunload\(\): void \{\s*this\.releaseMainProcessState\(\);/);
-  const release = main.slice(main.indexOf('private releaseMainProcessState'));
-  const body = release.slice(0, release.indexOf('\n  }'));
-  assert.match(body, /hotkey\?\.release\(\)/);
-  assert.match(body, /destroyTray\(\)/);
-  assert.match(body, /ownership\.stop\(\)/, 'the record watcher outlives the renderer too (Vex L-5)');
-  const tray = strip(read('src/electron/tray.ts'));
-  assert.match(tray, /^let tray: Tray \| null = null;/m, 'the Tray reference is module-level, not on the plugin instance');
-  assert.match(tray, /t\.destroy\(\)/);
+  assert.match(main, /registerDomEvent\(window, 'beforeunload', \(\) => this\.hotkey\?\.release\(\)\)/, 'Cmd-R reload skips onunload');
+  assert.match(main, /onunload\(\): void \{\s*this\.hotkey\?\.release\(\);/);
 });
 
-test('the tray menu label never registers its accelerator, and no click handler pops the menu a second time', () => {
-  const tray = strip(read('src/electron/tray.ts'));
-  assert.match(tray, /registerAccelerator = false/);
-  assert.doesNotMatch(tray, /popUpContextMenu|\.on\('click'/, 'a tray with a context menu opens it on click by itself; a handler opens it twice on macOS');
-});
-
-test('the hotkey is gated by ownership and re-applied only when the chord changes', () => {
-  const main = strip(read('src/main.ts'));
-  assert.match(main, /const owns = this\.ownsMainProcessState\(\)/);
-  assert.match(main, /const wantedChord = owns \? this\.settings\.hotkey : ''/);
-  assert.match(main, /if \(wantedChord !== this\.appliedChord\)/);
-  assert.match(main, /return this\.settings\.ownsMenuBar && this\.ownership\.state\.mayOwn/, 'both this vault and the record must say yes');
-});
-
-test('protocol text is plain text: no innerHTML, no outerHTML, no insertAdjacentHTML anywhere', () => {
+test('no innerHTML, no outerHTML, no insertAdjacentHTML anywhere', () => {
   for (const f of sources) {
     assert.doesNotMatch(strip(readFileSync(f, 'utf8')), /innerHTML|outerHTML|insertAdjacentHTML/, rel(f));
   }
@@ -151,54 +124,16 @@ test('the plugin touches no private surface and no global it should not', () => 
     [/\beval\(|new Function\(/, 'dynamic code'],
     [/\.style\.[a-zA-Z]+\s*=/, 'an inline style write'],
     [/\bfetch\(|XMLHttpRequest|WebSocket|requestUrl/, 'a network call'],
-    [/from ['"](node:)?(fs|child_process|path|os)['"]/, 'a Node module'],
+    [/from ['"](node:)?(fs|child_process|path|os)['"]|require\?\.\(['"](fs|path|os|child_process)['"]\)/, 'a Node module'],
+    [/\bfs\.(read|write|open|stat|watch|rename|unlink|realpath|close|fstat)/, 'a file outside the vault API'],
+    [/openTabById|\.setting\b|executeCommandById|\.commands\b/, 'a private field of the app'],
     [/\(\?<[=!]/, 'a regex lookbehind'],
     [/!important/, '!important'],
     [/\.obsidian\//, 'a hardcoded config path (use vault.configDir)'],
   ];
   for (const f of sources) {
     const text = strip(readFileSync(f, 'utf8'));
-    for (const [re, what] of banned) {
-      if (NODE_ALLOWED.has(rel(f)) && (what === 'a Node module' || what.startsWith('a hardcoded config path'))) continue;
-      if (PRIVATE_API_ALLOWED.has(rel(f)) && what === 'app.plugins') continue;
-      assert.doesNotMatch(text, re, `${rel(f)} uses ${what}`);
-    }
-  }
-});
-
-test('the Node allowlist names files that exist, and only those two ever reach fs', () => {
-  for (const f of NODE_ALLOWED) assert.ok(sources.includes(resolve(repo, f)), `${f} is allowlisted but does not exist`);
-  for (const f of sources) {
-    if (NODE_ALLOWED.has(rel(f))) continue;
-    const text = strip(readFileSync(f, 'utf8'));
-    assert.doesNotMatch(text, /\bfs\.(read|write|open|stat|watch|rename|unlink|realpath|close|fstat)/, `${rel(f)} reaches fs outside the allowlist`);
-  }
-  /* And the two that are allowed really do it through the guarded window
-     require, never through a bundled import that esbuild would resolve. */
-  const owner = read('src/electron/ownerRecord.ts');
-  assert.match(owner, /import type \* as FsModule from 'node:fs'/, 'types only');
-  assert.match(owner, /w\.require\?\.\('fs'\)/, 'the module comes from the host at runtime');
-  assert.doesNotMatch(owner.replace(/import type[^\n]*\n/g, ''), /^import .*from '(node:)?fs'/m, 'no value import of fs');
-});
-
-test('the three reaches past the public API are app.setting, app.commands and app.plugins, all guarded, all in main.ts', () => {
-  for (const f of sources) {
-    const text = strip(readFileSync(f, 'utf8'));
-    if (PRIVATE_API_ALLOWED.has(rel(f))) {
-      assert.match(text, /typeof setting\.open === 'function' && typeof setting\.openTabById === 'function'/);
-      assert.match(text, /typeof commands\.executeCommandById === 'function'/);
-      assert.match(text, /new Notice\('This action needs a command this build does not have\.'\)/, 'a changed shape degrades to a notice');
-      /* The sibling plugin lookup: every step checked before anything is
-         called, and every failure silent, because a member without the
-         Content Tracker is the normal case rather than an error. */
-      assert.match(text, /typeof plugins\.getPlugin !== 'function'\) return null/);
-      assert.match(text, /typeof tracker\.getRecent !== 'function'\) return null/);
-      assert.match(text, /if \(!Array\.isArray\(answer\)\) return null/, 'another plugin\'s answer is never trusted to be a list');
-      assert.match(text, /file instanceof TFile && this\.notes\.owns\(file\)/, "and never to be inside the member's scratchpad folder");
-      assert.doesNotMatch(text, /getRecent[\s\S]{0,200}new Notice/, 'a missing sibling is not something the member should read about');
-      continue;
-    }
-    assert.doesNotMatch(text, /openTabById|\.setting\b|executeCommandById|getPlugin/, rel(f));
+    for (const [re, what] of banned) assert.doesNotMatch(text, re, `${rel(f)} uses ${what}`);
   }
 });
 
@@ -320,32 +255,18 @@ test('the drag band and the count line span the window, so a centred column cann
   }
 });
 
-test('no literal colour anywhere in src; the icon is the embedded PNG, handed to the Tray as a path', () => {
+test('no literal colour anywhere in src', () => {
   for (const f of sources) {
     const text = strip(readFileSync(f, 'utf8'));
     assert.deepEqual([...text.matchAll(/#[0-9a-fA-F]{3,8}\b/g)].map((m) => m[0]), [], rel(f));
   }
-  const icon = strip(read('src/electron/trayIcon.ts'));
-  assert.match(icon, /from '\.\.\/\.\.\/assets\/menubar-icon\.png'/);
-  assert.match(icon, /from '\.\.\/\.\.\/assets\/menubar-icon@2x\.png'/);
-  assert.doesNotMatch(icon, /canvas/, 'no placeholder drawn');
-  assert.match(read('esbuild.config.mjs'), /loader: \{ '\.png': 'dataurl' \}/);
-  /* The Tray gets a string. @electron/remote serializes a NativeImage by
-     value and drops the template flag on the way to the main process, so
-     no NativeImage is ever built in this renderer. */
-  const tray = strip(read('src/electron/tray.ts'));
-  assert.match(tray, /iconPath: string/, 'ensureTray takes a path');
-  assert.match(tray, /new remote\.Tray\(iconPath\)/, 'the Tray is constructed from the path');
-  for (const f of sources) {
-    assert.doesNotMatch(strip(readFileSync(f, 'utf8')), /setTemplateImage|nativeImage|createEmpty|addRepresentation/, `${rel(f)} builds an image in the renderer`);
-  }
 });
 
-test('the built plugin requires obsidian only and reaches Electron and Node through window.require at runtime', () => {
+test('the built plugin requires obsidian only and reaches Electron through window.require at runtime', () => {
   const main = read('main.js');
   const requires = [...main.matchAll(/require\("([^"]+)"\)/g)].map((m) => m[1]);
   assert.deepEqual([...new Set(requires)], ['obsidian']);
   assert.match(main, /@electron\/remote/, 'the remote module name is present for the runtime lookup');
   assert.doesNotMatch(main, /node_modules/);
-  assert.equal([...main.matchAll(/data:image\/png;base64,/g)].length, 2, 'the two icon PNGs are embedded');
+  assert.doesNotMatch(main, /data:image\/png;base64,/, 'no icon is embedded any more');
 });

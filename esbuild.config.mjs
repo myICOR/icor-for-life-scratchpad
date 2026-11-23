@@ -6,8 +6,7 @@
  * process's own modules, wired by Obsidian into every vault window and
  * required lazily at runtime (src/electron/remote.ts). All three are
  * external, so main.js carries only this plugin's own code and never a
- * copy of Electron. The two menu bar icon PNGs in assets/ are embedded as
- * data URLs, so a three-file install from the directory shows the icon. */
+ * copy of Electron. */
 import esbuild from 'esbuild';
 import process from 'node:process';
 
@@ -25,7 +24,6 @@ const context = await esbuild.context({
   sourcemap: production ? false : 'inline',
   minify: production,
   external: ['obsidian', 'electron', '@electron/remote'],
-  loader: { '.png': 'dataurl' },
 });
 
 if (production) {

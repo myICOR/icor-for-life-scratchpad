@@ -1,6 +1,7 @@
 /* Everything the plugin draws inside the popout: the floating toolbar pill
- * at the top right and the character count at the bottom centre. Iris's
- * spec, section 2 and section 3.
+ * at the top right, with the two ways to switch what the window holds, and
+ * the character count at the bottom centre. Iris's spec, section 2 and
+ * section 3.
  *
  * Two things about this module that are not style choices:
  *
@@ -22,64 +23,33 @@
  *    the member picked the native frame, titleBarStyle is then "hidden"),
  *    which is the condition an app-region drag needs. */
 import { setIcon, setTooltip } from 'obsidian';
-import { ACTION_BROWSE_NOTES, ACTION_OPEN_ACTIONS, ACTION_TOGGLE_ALWAYS_ON_TOP, TOOL_NEW_MENU } from '../actions/table';
+import { TOOLBAR_COMMANDS } from '../commands';
 import { CLASS_PREFIX } from '../constants';
 import { characterCountText } from '../notes/meta';
 
-interface ToolButton {
-  readonly action: string;
-  readonly icon: string;
-  readonly tooltip: string;
-  /* The anchor is the only button that carries state. */
-  readonly pressable: boolean;
-  /* The plus is the only button that opens something rather than doing
-     something, so it says so to a screen reader and hands its own element
-     to the handler to hang the menu on. */
-  readonly opensMenu?: boolean;
-}
-
-/* Left to right. `pin` is deliberately absent: it is spent on note pinning
-   in the browse list, and `anchor` is the remaining mark whose envelope is
-   distinct from command, files, plus and pin (Iris, section 2). */
-const BUTTONS: readonly ToolButton[] = [
-  { action: ACTION_TOGGLE_ALWAYS_ON_TOP, icon: 'lucide-anchor', tooltip: 'Always on top', pressable: true },
-  { action: ACTION_OPEN_ACTIONS, icon: 'lucide-command', tooltip: 'Actions', pressable: false },
-  { action: ACTION_BROWSE_NOTES, icon: 'lucide-files', tooltip: 'Browse notes', pressable: false },
-  { action: TOOL_NEW_MENU, icon: 'lucide-plus', tooltip: 'New note', pressable: false, opensMenu: true },
-];
-
 export interface Chrome {
-  /* Reflects the always-on-top state on the anchor glyph. This is the
-     window's one marker moment: no border change, no tint, no badge. */
-  setAlwaysOnTop(on: boolean): void;
   setCount(characters: number): void;
   destroy(): void;
 }
 
-export function mountChrome(doc: Document, onAction: (action: string, anchor: HTMLElement) => void): Chrome {
+export function mountChrome(doc: Document, onCommand: (id: string) => void): Chrome {
   /* First, so it sits under the pill in paint order as well as in z-index.
      aria-hidden and no tab stop: it is a window control for the mouse, and
      a keyboard user moves a window with the system's own gesture. */
   const dragbar = doc.body.createDiv({ cls: `${CLASS_PREFIX}dragbar`, attr: { 'aria-hidden': 'true' } });
 
-  const toolbar = doc.body.createDiv({ cls: `${CLASS_PREFIX}toolbar`, attr: { role: 'toolbar', 'aria-label': 'Scratchpad actions' } });
+  const toolbar = doc.body.createDiv({ cls: `${CLASS_PREFIX}toolbar`, attr: { role: 'toolbar', 'aria-label': 'Scratchpad' } });
 
-  let anchorEl: HTMLElement | null = null;
-  for (const button of BUTTONS) {
+  for (const command of TOOLBAR_COMMANDS) {
+    const label = command.button ?? command.name;
     /* clickable-icon is Obsidian's own: hover, active and the icon size
        come from the host for free, in every theme. */
-    const el = toolbar.createEl('button', { cls: `clickable-icon ${CLASS_PREFIX}tool`, attr: { type: 'button' } });
-    setIcon(el, button.icon);
-    setTooltip(el, button.tooltip, { placement: 'bottom' });
-    el.setAttribute('aria-label', button.tooltip);
-    if (button.pressable) {
-      el.setAttribute('aria-pressed', 'false');
-      anchorEl = el;
-    }
-    if (button.opensMenu) el.setAttribute('aria-haspopup', 'menu');
+    const el = toolbar.createEl('button', { cls: `clickable-icon ${CLASS_PREFIX}tool`, attr: { type: 'button', 'aria-label': label } });
+    setIcon(el, command.icon);
+    setTooltip(el, label, { placement: 'bottom' });
     el.addEventListener('click', (evt) => {
       evt.preventDefault();
-      onAction(button.action, el);
+      onCommand(command.id);
     });
   }
 
@@ -89,11 +59,6 @@ export function mountChrome(doc: Document, onAction: (action: string, anchor: HT
   const count = footer.createSpan({ cls: `${CLASS_PREFIX}count`, text: characterCountText(0), attr: { 'aria-live': 'polite' } });
 
   return {
-    setAlwaysOnTop(on: boolean): void {
-      if (!anchorEl) return;
-      anchorEl.setAttribute('aria-pressed', on ? 'true' : 'false');
-      anchorEl.toggleClass(`${CLASS_PREFIX}tool-on`, on);
-    },
     setCount(characters: number): void {
       count.setText(characterCountText(characters));
     },

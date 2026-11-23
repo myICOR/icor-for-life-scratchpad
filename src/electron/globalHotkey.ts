@@ -1,13 +1,14 @@
-/* The global hotkey, held through Electron's globalShortcut in the main
+/* The global shortcut, held through Electron's globalShortcut in the main
  * process. Flint's rules from the 1.13.7 read, each one load-bearing:
  *
  * - `unregister(chord)` before every `register(chord)`. A second register
  *   of a chord this process already holds returns false and keeps the OLD
  *   callback (Chromium's GlobalAcceleratorListener refuses a duplicate;
  *   Electron does not pre-check). After "Reload app without saving", or
- *   in a second vault, that old callback is dead or foreign.
+ *   in a second vault, that old callback is dead or foreign. The same
+ *   unregister means the vault that applies the chord last holds it.
  * - Check the boolean. False means the chord is held elsewhere (another
- *   app, another vault); say so with a Notice rather than pretend.
+ *   app); say so with a Notice rather than pretend.
  * - Never `unregisterAll()`: the process is shared with every other
  *   plugin and every other vault window.
  * - Release on unload AND on the window's beforeunload: Cmd-R reload
@@ -40,11 +41,11 @@ export class GlobalHotkey {
       gs.unregister(chord);
       ok = gs.register(chord, onFire);
     } catch (err) {
-      new Notice(`The hotkey ${chord} could not be registered: ${err instanceof Error ? err.message : String(err)}`);
+      new Notice(`The shortcut ${chord} could not be registered: ${err instanceof Error ? err.message : String(err)}`);
       return false;
     }
     if (!ok) {
-      new Notice(`The hotkey ${chord} is taken by another application or another vault. Pick a different one under Settings, ${PLUGIN_NAME}.`);
+      new Notice(`The shortcut ${chord} is taken by another application. Pick a different one under Settings, ${PLUGIN_NAME}.`);
       return false;
     }
     this.held = chord;

@@ -1,6 +1,6 @@
 /* Identity and floor. One id across the manifest, the package and the
  * constant; one version across three files; desktop only, because the
- * icon and the hotkey live in Electron's main process; every named import
+ * window and the shortcut live in Electron's main process; every named import
  * from 'obsidian' present at the declared minAppVersion, read from the
  * @since annotations in obsidian.d.ts; bare command ids and sentence-case
  * names; no default hotkeys anywhere. */
@@ -8,7 +8,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { ACTIONS, PLUGIN_ID, PLUGIN_NAME, PROTOCOL_ACTION } from './build/pure.mjs';
+import { COMMANDS, PLUGIN_ID, PLUGIN_NAME } from './build/pure.mjs';
 
 const repo = resolve(import.meta.dirname, '..');
 const read = (f) => readFileSync(resolve(repo, f), 'utf8');
@@ -101,24 +101,28 @@ test('every named import from obsidian exists at minAppVersion', () => {
      older. Checked by the scanner's no-unsupported-api rule in lint. */
 });
 
-test('every command comes from the one action table, and none carries a default hotkey', () => {
+test('every command comes from the one list, and none carries a default hotkey', () => {
   const main = read('src/main.ts');
-  /* One registration loop over ACTIONS: the commands, the popout's chords
-     and the palette rows cannot drift apart because they are one list. */
-  assert.match(main, /for \(const action of ACTIONS\) \{\s*this\.addCommand\(\{ id: action\.id, name: action\.name, icon: action\.icon/);
+  /* One registration loop over COMMANDS: the commands and the toolbar
+     buttons cannot drift apart because they are one list. */
+  assert.match(main, /for \(const command of COMMANDS\) \{\s*this\.addCommand\(\{\s*id: command\.id,\s*name: command\.name,\s*icon: command\.icon/);
   assert.equal([...main.matchAll(/addCommand\(/g)].length, 1, 'exactly one addCommand call');
-  assert.ok(ACTIONS.length >= 10);
-  for (const action of ACTIONS) {
-    assert.doesNotMatch(action.id, /icor|scratchpad/, 'bare id, the app prefixes the plugin id');
-    assert.match(action.name, /^[A-Z][a-z]/, `${action.name} is sentence case`);
-    assert.match(action.icon, /^lucide-/);
+  assert.equal(COMMANDS.length, 3);
+  for (const command of COMMANDS) {
+    assert.doesNotMatch(command.id, /icor|scratchpad/, 'bare id, the app prefixes the plugin id');
+    assert.match(command.name, /^[A-Z][a-z]/, `${command.name} is sentence case`);
+    assert.match(command.icon, /^lucide-/);
   }
   assert.doesNotMatch(main, /hotkeys:/, 'no default hotkey on a command; the global chord is the member\'s');
 });
 
-test('the protocol action is the documented one', () => {
-  assert.equal(PROTOCOL_ACTION, 'icor-scratchpad');
-  assert.match(read('README.md'), /obsidian:\/\/icor-scratchpad\?vault=/);
+test('no obsidian:// link is answered, and no doc still offers one', () => {
+  /* 0.2 answered obsidian://icor-scratchpad and the README showed the link.
+     The link went with the rest of the bloat (Tom, 2026-11-23), so no doc
+     may promise it. The changelog keeps its history. */
+  for (const f of ['README.md', 'SECURITY.md', 'docs/architecture.md', 'docs/releases/0.3.0.md']) {
+    assert.doesNotMatch(read(f), /obsidian:\/\/icor-scratchpad/, `${f} still offers the link`);
+  }
 });
 
 test('electron is a devDependency for its types and an esbuild external, never bundled', () => {

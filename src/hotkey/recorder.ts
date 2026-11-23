@@ -1,7 +1,7 @@
-/* The hotkey recorder row on the settings page. A "Record hotkey" button
- * arms the row; the next chord pressed anywhere in the window becomes the
- * accelerator (shown as Electron writes it), Escape disarms, and "Clear"
- * drops the hotkey. The keydown listener lives on the settings window's
+/* The shortcut recorder row on the settings page. A "Record shortcut"
+ * button arms the row; the next chord pressed anywhere in the window becomes
+ * the accelerator (shown as Electron writes it), Escape disarms, and "Clear"
+ * drops the shortcut. The keydown listener lives on the settings window's
  * document for the length of one recording and is removed on the first
  * chord, on Escape, and when the row is torn down. */
 import { Platform, Setting } from 'obsidian';
@@ -70,7 +70,7 @@ export function renderHotkeyRecorder(setting: Setting, host: RecorderHost): Reco
   };
 
   setting.addButton((b) => {
-    b.setButtonText('Record hotkey').onClick(begin);
+    b.setButtonText('Record shortcut').onClick(begin);
     b.buttonEl.addClass(`${CLASS_PREFIX}record`);
   });
   setting.addButton((b) => {

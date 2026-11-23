@@ -1,7 +1,7 @@
-/* Where the "Daily note" item in the plus menu sends the member: the path
- * Obsidian's own core plugin would use, built from that plugin's own
- * settings file. Pure, because the date formatter is handed in, so a fixed
- * day can be rendered with no moment runtime and no vault.
+/* Where today's daily note is: the path Obsidian's own core plugin would
+ * use, built from that plugin's own settings file, and the scratch note
+ * beside it. Pure, because the date formatter is handed in, so a fixed day
+ * can be rendered with no moment runtime and no vault.
  *
  * The renderer below is a small moment stand-in: it understands the tokens
  * the core plugin's default and Tom's own format use, which is the whole
@@ -10,7 +10,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { DAILY_DEFAULTS, DAILY_DEFAULT_FORMAT, dailyNotePath, normaliseDailyOptions } from './build/pure.mjs';
+import { DAILY_DEFAULTS, DAILY_DEFAULT_FORMAT, dailyNotePath, isUnder, normaliseDailyOptions, scratchNotePath } from './build/pure.mjs';
 
 const repo = resolve(import.meta.dirname, '..');
 const read = (f) => readFileSync(resolve(repo, f), 'utf8');
@@ -65,10 +65,21 @@ test('a format that renders to nothing falls back rather than writing a file cal
   assert.doesNotMatch(path, /\/\.md$/);
 });
 
+test('a scratch note whose name renders to nothing is Untitled, never a file called .md', () => {
+  assert.equal(scratchNotePath({ folder: 'Days', format: 'YYYY-MM-DD' }, (f) => (f === 'YYYYMMDDHHmm' ? '///' : render(f))), 'Days/Untitled.md');
+});
+
+test('the restored scratchpad window is recognised by a markdown note under the daily notes folder', () => {
+  assert.equal(isUnder('00 Daily Scratchpad/2026/09/202609091842.md', '00 Daily Scratchpad'), true);
+  assert.equal(isUnder('00 Daily Scratchpad Old/a.md', '00 Daily Scratchpad'), false, 'a sibling folder with a longer name is not inside');
+  assert.equal(isUnder('00 Daily Scratchpad/2026/09/sketch.canvas', '00 Daily Scratchpad'), false);
+  assert.equal(isUnder('anything.md', ''), true, 'the vault root holds everything');
+});
+
 test('the settings file is read through the vault adapter and configDir, never app.internalPlugins', () => {
-  /* Reaching the live instance would be a THIRD private surface in a plugin
-     that has two, both guarded and both pinned by hygiene. The file is the
-     same data, and it is what the core plugin's own loadData() reads. */
+  /* Reaching the live instance would be a private surface in a plugin that
+     uses none. The file is the same data, and it is what the core plugin's
+     own loadData() reads. */
   const store = strip(read('src/notes/store.ts'));
   assert.match(store, /\$\{this\.app\.vault\.configDir\}\/daily-notes\.json/, 'the config folder is never spelled out');
   assert.match(store, /this\.app\.vault\.adapter\.read\(path\)/);
@@ -76,13 +87,13 @@ test('the settings file is read through the vault adapter and configDir, never a
   assert.doesNotMatch(store, /internalPlugins/);
 });
 
-test('an existing daily note is opened and never written to, and no template is rendered', () => {
+test('an existing daily or scratch note is opened and never written to, and no template is rendered', () => {
   /* The dropped plugin appended a line to the daily note. This one opens
      the file the core plugin would open and stops there: applying the
      template is the core plugin's job, and doing it here would write a
      second, subtly different daily note. */
   const store = strip(read('src/notes/store.ts'));
-  const body = store.slice(store.indexOf('async dailyNote('));
+  const body = store.slice(store.indexOf('async note('));
   const block = body.slice(0, body.indexOf('\n  }'));
   assert.match(block, /const found = this\.app\.vault\.getAbstractFileByPath\(path\)/);
   const found = block.indexOf('if (found instanceof TFile) return found;');
@@ -90,5 +101,6 @@ test('an existing daily note is opened and never written to, and no template is 
   assert.ok(found >= 0 && create >= 0 && found < create, 'the existing file returns before anything is created');
   assert.match(block, /await this\.ensureFolder\(/, 'the folders of the format are created');
   assert.doesNotMatch(block, /template|modify|append/i, 'nothing is rendered into the note');
-  assert.match(block, /this\.app\.vault\.create\(path, ''\)/, 'a new daily note is empty');
+  assert.match(block, /this\.app\.vault\.create\(path, ''\)/, 'a new note is empty');
+  assert.match(block, /openTargetPath\(choice, await this\.dailyOptions\(\)/, 'one path function for both choices');
 });

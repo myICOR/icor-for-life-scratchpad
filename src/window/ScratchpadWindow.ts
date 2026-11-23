@@ -1,5 +1,5 @@
 /* The scratchpad window: a real Obsidian popout holding a real markdown
- * leaf, with the chrome stripped and a toolbar of our own on top.
+ * leaf, with the chrome stripped and a small toolbar of our own on top.
  *
  * The four facts from Flint's read of the 1.13.7 bundle that this file is
  * shaped around, each one load bearing:
@@ -28,10 +28,9 @@
  *    clearing is handled instead: the flag is re-applied from the SETTING
  *    on leave-full-screen, on unmaximize and on every show, and while the
  *    window is expanded it is simply off (Tom, 2026-09-09). */
-import { MarkdownView, Notice, Platform, WorkspaceWindow, debounce } from 'obsidian';
+import { MarkdownView, Notice, WorkspaceWindow, debounce } from 'obsidian';
 import type { App, TFile, WorkspaceLeaf } from 'obsidian';
 import type { BrowserWindow } from 'electron';
-import { matchChord } from '../actions/table';
 import { DEFAULT_WINDOW_SIZE } from '../settings/model';
 import type { ScratchpadSettings, WindowBounds } from '../settings/model';
 import { WINDOW_CLASS } from '../constants';
@@ -43,28 +42,20 @@ import type { Chrome } from './chrome';
 
 export interface WindowCallbacks {
   settings(): ScratchpadSettings;
-  /* A toolbar button, or a chord bound in the popout's scope. The anchor is
-     the button's own element, for the one action that opens a menu on it. */
-  runAction(action: string, anchor?: HTMLElement): void;
+  /* A toolbar button: one of the commands in src/commands.ts. */
+  runCommand(id: string): void;
   /* The window moved or was resized; persist the rectangle. */
   onBounds(bounds: WindowBounds): void;
-  /* The popout was really closed (Cmd-W, a tab drag, a quit). */
-  onClosed(): void;
-  /* The popout took focus; the plugin re-reads what it needs to. */
-  onFocus(): void;
 }
 
 /* Long enough that a drag does not write on every frame, short enough that
    a member who moves the window and quits immediately keeps the position. */
 const BOUNDS_SAVE_MS = 400;
 const COUNT_PAINT_MS = 100;
-/* Long enough for a real window focus to arrive, short enough that a
-   member never waits on it. */
-const FOCUS_WAIT_MS = 300;
-/* Obsidian's own editor search, which the "Find in note" row opens and the
-   member's own Cmd-F opens too. Both the source-mode and the reading-mode
-   search build this container, and the replace variant is the same element
-   with .mod-replace-mode on it, so one selector covers all three. */
+/* Obsidian's own editor search, which the member's own Cmd-F opens. Both
+   the source-mode and the reading-mode search build this container, and the
+   replace variant is the same element with .mod-replace-mode on it, so one
+   selector covers all three. */
 const SEARCH = '.document-search-container';
 const SEARCH_CLOSE = '.document-search-close-button';
 /* Everything else in this document that owns Escape already. */
@@ -105,10 +96,14 @@ export class ScratchpadWindow {
     return this.wsWin !== null;
   }
 
-  /* True when the window is open AND the main process is reachable, so the
-     caller knows whether show, hide and always-on-top can do anything. */
-  get isDriveable(): boolean {
-    return this.bw !== null;
+  /* Visible and the window in front: the one state in which the shortcut
+     puts the window away rather than bringing it forward. */
+  get isFrontmost(): boolean {
+    try {
+      return this.bw !== null && this.bw.isVisible() && this.bw.isFocused();
+    } catch {
+      return false;
+    }
   }
 
   get view(): MarkdownView | null {
@@ -118,14 +113,6 @@ export class ScratchpadWindow {
 
   get file(): TFile | null {
     return this.view?.file ?? null;
-  }
-
-  get doc(): Document | null {
-    return this.wsWin?.doc ?? null;
-  }
-
-  get win(): Window | null {
-    return this.wsWin?.win ?? null;
   }
 
   /* Opens the popout on `file`. The synchronous block after openPopoutLeaf
@@ -177,7 +164,7 @@ export class ScratchpadWindow {
     container.doc.body.classList.add(WINDOW_CLASS);
     const remote = getRemoteFor(container.win);
     if (!remote) {
-      new Notice('The scratchpad window is open, but this build does not let a plugin drive it, so the hotkey cannot show and hide it.');
+      new Notice('The scratchpad window is open, but this build does not let a plugin drive it, so the shortcut cannot show and hide it.');
       return;
     }
     this.popoutRemote = remote;
@@ -193,41 +180,14 @@ export class ScratchpadWindow {
     }
   }
 
-  /* The parts that need a document and a view: the toolbar, the count, the
-     keys, the search watch, the window's own listeners. */
+  /* The parts that need a document and a view: the toolbar, the count,
+     Escape, the search watch, the window's own listeners. */
   private mount(): void {
     const wsWin = this.wsWin;
     if (!wsWin || this.chrome) return;
-    this.chrome = mountChrome(wsWin.doc, (action, anchor) => this.cb.runAction(action, anchor));
-    this.chrome.setAlwaysOnTop(this.readAlwaysOnTop());
+    this.chrome = mountChrome(wsWin.doc, (id) => this.cb.runCommand(id));
     this.renderCount();
     this.watchSearch();
-
-    /* The plugin's chords. One listener on the popout's own document, in the
-       capture phase, matching event.code against the table and nothing else.
-       See the header of src/actions/table.ts for why this is not a Scope.
-
-       stopPropagation stops the rest of THIS document; it cannot stop
-       Obsidian's Keymap, which already saw a clone of this event from the
-       relay on the window. That is why no chord in the table may collide
-       with a core default, and why test/actions.test.mjs holds the list.
-
-       The find bar keeps every key it is sent, and so does anything the
-       member is typing into: a palette, a suggestion popup or a menu owns
-       the keyboard while it has focus, and a chord that opened a second
-       modal over the first would be the same defect as swallowing the
-       search's Enter. The check is on the focused element rather than a
-       query over the document, so it costs a walk up a few parents. */
-    const onChord = (evt: KeyboardEvent): void => {
-      if (evt.defaultPrevented || inside(evt.target, SEARCH) || inside(evt.target, OVERLAYS)) return;
-      const action = matchChord(evt, Platform.isMacOS);
-      if (!action) return;
-      evt.preventDefault();
-      evt.stopPropagation();
-      this.cb.runAction(action.id);
-    };
-    wsWin.doc.addEventListener('keydown', onChord, { capture: true });
-    this.cleanups.push(() => wsWin.doc.removeEventListener('keydown', onChord, { capture: true }));
 
     /* Escape. The order lives in ./escape.ts and the test pins it: a search
        bar first, then anything else that already owns the key, then the
@@ -255,16 +215,11 @@ export class ScratchpadWindow {
     wsWin.doc.addEventListener('keydown', onEscape);
     this.cleanups.push(() => wsWin.doc.removeEventListener('keydown', onEscape));
 
-    const onFocus = (): void => this.cb.onFocus();
-    wsWin.win.addEventListener('focus', onFocus);
-    this.cleanups.push(() => wsWin.win.removeEventListener('focus', onFocus));
-
     const bw = this.bw;
     if (!bw) return;
     const onGeometry = (): void => {
       this.saveBounds();
     };
-    const onTopChanged = (): void => this.chrome?.setAlwaysOnTop(this.readAlwaysOnTop());
     /* Fullscreen and maximize clear always-on-top, and on macOS a window
        cannot be both. So the flag is not fought while the window is
        expanded; it is put back from the SETTING the moment it comes back,
@@ -276,21 +231,12 @@ export class ScratchpadWindow {
     bw.on('move', onGeometry);
     bw.on('leave-full-screen', onRestored);
     bw.on('unmaximize', onRestored);
-    bw.on('enter-full-screen', onTopChanged);
-    bw.on('maximize', onTopChanged);
-    /* Obsidian has its own "Always on Top" item in the Window menu, enabled
-       for popups only, so the toolbar reads the truth rather than its own
-       memory (Flint point 2, trap B). */
-    bw.on('always-on-top-changed', onTopChanged);
     this.cleanups.push(() => {
       try {
         bw.removeListener('resize', onGeometry);
         bw.removeListener('move', onGeometry);
         bw.removeListener('leave-full-screen', onRestored);
         bw.removeListener('unmaximize', onRestored);
-        bw.removeListener('enter-full-screen', onTopChanged);
-        bw.removeListener('maximize', onTopChanged);
-        bw.removeListener('always-on-top-changed', onTopChanged);
       } catch {
         /* the main side is already gone */
       }
@@ -350,33 +296,6 @@ export class ScratchpadWindow {
     this.focusEditor();
   }
 
-  /* The caret in Obsidian's own inline title, with the name selected, so
-     the first keystroke replaces it. That is what the subject note wants:
-     the member names the note first and types the body afterwards (Tom,
-     2026-09-09 evening). Returns false when the title is not in the
-     document, which is the member's "Show inline title" appearance setting
-     switched off; the caller then falls back to the body, because a note
-     that was created still has to be typeable.
-
-     `.inline-title` is Obsidian's markup rather than its API, like the two
-     search classes this file already reads; SECURITY.md names it with its
-     failure mode. Everything here is built off the element's OWN document
-     and window: a popout is a separate realm, and the global document in
-     this bundle is always the main window's. */
-  focusInlineTitle(): boolean {
-    const view = this.view;
-    const title = view?.contentEl.querySelector<HTMLElement>('.inline-title') ?? null;
-    if (!title) return false;
-    title.focus();
-    const selection = title.win.getSelection();
-    if (!selection) return false;
-    const range = title.doc.createRange();
-    range.selectNodeContents(title);
-    selection.removeAllRanges();
-    selection.addRange(range);
-    return true;
-  }
-
   /* `toEnd` is for a note this plugin just created: the inline title is
      shown in this window (it is Obsidian's own filename editor, and the
      member renames a note by typing in it), so without an explicit caret
@@ -389,18 +308,6 @@ export class ScratchpadWindow {
     if (!toEnd) return;
     const last = view.editor.lastLine();
     view.editor.setCursor({ line: last, ch: view.editor.getLine(last).length });
-  }
-
-  /* The hotkey and the tray item both land here: show when hidden or
-     unfocused, hide when it is the window in front. */
-  toggle(): void {
-    const bw = this.bw;
-    if (!bw) {
-      this.show();
-      return;
-    }
-    if (bw.isVisible() && bw.isFocused()) this.hide();
-    else this.show();
   }
 
   show(): void {
@@ -417,7 +324,6 @@ export class ScratchpadWindow {
     /* The level survives hide and show, but a maximize or a fullscreen
        entry clears it, so it is re-asserted on every show. */
     this.applyAlwaysOnTop(this.cb.settings().alwaysOnTop);
-    this.chrome?.setAlwaysOnTop(this.readAlwaysOnTop());
   }
 
   hide(): void {
@@ -426,30 +332,6 @@ export class ScratchpadWindow {
     } catch {
       /* the window is already gone */
     }
-  }
-
-  /* Waits for the popout to actually hold focus before the caller opens a
-     Modal or raises a Notice. Both mount into `activeWindow`, which only
-     changes on a real DOM focus event, so a modal opened in the same tick
-     as show() would land in whatever window had focus before (Flint point
-     3, trap A and point 7). */
-  async whenFocused(): Promise<void> {
-    const wsWin = this.wsWin;
-    if (!wsWin) return;
-    if (wsWin.doc.hasFocus()) return;
-    await new Promise<void>((resolve) => {
-      let timer: number | null = null;
-      const done = (): void => {
-        if (timer !== null) window.clearTimeout(timer);
-        timer = null;
-        wsWin.win.removeEventListener('focus', done);
-        resolve();
-      };
-      wsWin.win.addEventListener('focus', done, { once: true });
-      /* Never hang: if focus never arrives the caller still gets its
-         modal, in whatever window Obsidian thinks is active. */
-      timer = window.setTimeout(done, FOCUS_WAIT_MS);
-    });
   }
 
   applyAlwaysOnTop(on: boolean): void {
@@ -461,17 +343,6 @@ export class ScratchpadWindow {
       if (bw && !bw.isFullScreen()) bw.setAlwaysOnTop(on, 'floating');
     } catch {
       /* the main side is already gone */
-    }
-    /* The glyph reads the window, not the request, so a flag the platform
-       refused never shows as taken. */
-    this.chrome?.setAlwaysOnTop(this.readAlwaysOnTop());
-  }
-
-  readAlwaysOnTop(): boolean {
-    try {
-      return this.bw?.isAlwaysOnTop() ?? false;
-    } catch {
-      return false;
     }
   }
 
@@ -508,7 +379,8 @@ export class ScratchpadWindow {
      leaves, so dragging a second tab in and the scratchpad tab out leaves
      the popout alive while this.leaf addresses a leaf in another document:
      the toggle, the chords, the toolbar and the count would all point at
-     the wrong thing. Called from workspace 'layout-change' (Flint M-1,
+     the wrong thing, so the plugin lets go of it and the next press opens
+     a fresh one. Called from workspace 'layout-change' (Flint M-1,
      2026-09-09). */
   checkLeaf(): boolean {
     const leaf = this.leaf;
@@ -522,7 +394,6 @@ export class ScratchpadWindow {
     }
     if (container === wsWin) return true;
     this.release();
-    this.cb.onClosed();
     return false;
   }
 
@@ -532,7 +403,6 @@ export class ScratchpadWindow {
   forget(container: WorkspaceWindow): boolean {
     if (this.wsWin !== container) return false;
     this.release(false);
-    this.cb.onClosed();
     return true;
   }
 

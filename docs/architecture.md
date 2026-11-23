@@ -1,94 +1,65 @@
 # Architecture
 
-One renderer (the vault window) owning three things in Electron's main
-process, plus a second Obsidian window it strips and drives, a folder of
-notes, and a record outside every vault saying which vault owns the first
-two.
+One renderer (the vault window) holding one system-wide shortcut in
+Electron's main process, plus a second Obsidian window it strips and drives,
+and two kinds of note: today's daily note and the scratch notes beside it.
+
+0.3.0 is the slim release (Tom, 2026-11-23). The menu bar icon, the vault
+ownership record and the vault list, the `obsidian://` link, the actions
+palette, the browse list and the in-window chords are gone, with every file
+outside the vault and every private field of the app they needed.
 
 ## Module map
 
 ```
-src/main.ts                  the Plugin: wires everything, owns applySettings() and the action dispatcher
-src/constants.ts             id, name, class prefix, protocol action, the two file names outside the vault
-src/actions/table.ts         pure: the one table behind the commands, the popout chords and the palette rows
-src/settings/model.ts        ScratchpadSettings, defaults, normaliseSettings(), rekeyForRename()
-src/settings/SettingsTab.ts  declarative settings page (1.13 API) + the recorder row and the vault list
-src/hotkey/accelerator.ts    pure: KeyboardEvent -> chord, validate, normalise
-src/hotkey/recorder.ts       the Record hotkey / Clear row (DOM, settings page)
-src/electron/remote.ts       the door to @electron/remote, for this window and for the popout; bringForward()
-src/electron/globalHotkey.ts GlobalHotkey: apply(chord) / release(), Flint's rules
-src/electron/tray.ts         module-level Tray + Menu; ensure / rebuild / destroy
-src/electron/trayIcon.ts     writes the embedded PNGs as *Template.png files; returns the path
-src/electron/trayIconFiles.ts pure: the two filenames, data URL decode, byte compare
-src/electron/ownerRecord.ts  fs: the owner record, its directory watcher, the atomic write
-src/electron/vaultRegistry.ts fs: Obsidian's vault list, read on a click, every path validated
-src/ownership/record.ts      pure: the shapes of both files, canonical paths, the vault mark
-src/ownership/ownership.ts   the ownership state machine over those two modules
-src/window/ScratchpadWindow.ts the popout: open, adopt, show, hide, chrome, chords, Escape, bounds
-src/window/chrome.ts         the drag strip, the floating toolbar and the count line inside the popout
-src/window/escape.ts         pure: what Escape means, as one ordered decision
-src/window/newMenu.ts        the plus glyph's dropdown: the three note makers, in the popout's document
-src/notes/store.ts           the scratchpad folder: list, target folder, the three makers, duplicate, trash
-src/notes/naming.ts          pure: sanitise a name and a path, resolve a collision, the browse preview
-src/notes/daily.ts           pure: the core Daily notes plugin's folder and format -> today's path
-src/notes/meta.ts            pure: the count text, the relative time, the two sorts, the group order
-src/notes/plain.ts           pure: markdown to the text a reader sees
-src/modals/ActionsModal.ts   the actions palette (FuzzySuggestModal)
-src/modals/BrowseModal.ts    the browse list (FuzzySuggestModal) plus the Modified / Created toggle
-src/modals/rows.ts           the row rendering both modals share
-styles.css                   Obsidian variables only, every selector anchored on the plugin
+src/main.ts                    the Plugin: commands, applySettings(), toggle, show, open
+src/constants.ts               id, name, class prefix, the popout's body class
+src/commands.ts                pure: the three commands, two of them toolbar buttons
+src/settings/model.ts          ScratchpadSettings (five keys), defaults, normaliseSettings(), wantedChord()
+src/settings/SettingsTab.ts    declarative settings page (1.13 API) + the recorder row
+src/hotkey/accelerator.ts      pure: KeyboardEvent -> chord, validate, normalise
+src/hotkey/recorder.ts         the Record shortcut / Clear row (DOM, settings page)
+src/electron/remote.ts         the door to @electron/remote, for this window and for the popout; bringForward()
+src/electron/globalHotkey.ts   GlobalHotkey: apply(chord) / release(), Flint's rules
+src/window/ScratchpadWindow.ts the popout: open, adopt, show, hide, chrome, Escape, bounds
+src/window/chrome.ts           the drag strip, the two toolbar buttons and the count line
+src/window/escape.ts           pure: what Escape means, as one ordered decision
+src/notes/store.ts             today's daily or scratch note, found or created empty; daily-notes.json
+src/notes/daily.ts             pure: the daily and scratch paths, the open choice, showsTarget()
+src/notes/naming.ts            pure: sanitise a name and a path
+src/notes/meta.ts              pure: the count text
+styles.css                     Obsidian variables only, every selector anchored on the plugin
 ```
 
-`src/actions/table.ts` is the piece worth knowing about. The commands, the
-chords the popout binds, the palette rows and the plus glyph's menu are
-one array, so a shortcut chip cannot claim a key that nothing registers
-and a menu item cannot exist without a command behind it.
+## What the window opens
 
-The three ways to make a note all end in `src/notes/store.ts` and differ
-only in how they answer a name that is already taken: the unique note
-OPENS it (the name is the minute, so a second press inside that minute
-means the same note), the subject note numbers it (it is asked for by
-name), and the daily note is Obsidian's own, at the path the core plugin
-would use, opened untouched when it is there and created empty when it is
-not. The core plugin's folder and format are read from its own settings
-file through `vault.adapter` and `vault.configDir`, never through
-`app.internalPlugins`, which would be a third private surface.
+`openTargetPath(choice, options, render)` in `src/notes/daily.ts` is the
+whole rule. `daily` is the core Daily notes plugin's own path, from its
+`folder` and `format` (`00 Daily Scratchpad` and `YYYY/MM/YYYY-MM-DD` in the
+ICOR vault). `scratch` is the folder of that same path plus a name rendered
+from `YYYYMMDDHHmm`. The core plugin's settings are read from its own file
+through `vault.adapter` and `vault.configDir`, never through
+`app.internalPlugins`. `NoteStore.note()` opens the file at that path when
+it exists and creates it empty when it does not, so a second scratch note
+inside the same minute is the one already there.
 
-## The optional sibling
+`showsTarget(windowOpen, shownOn, today)` decides what a press of the
+shortcut shows: a closed window opens the choice; a hidden one comes back as
+it was the same day, and opens the choice again on a new day or after a
+relaunch.
 
-The browse list can take its recent order from **ICOR for Life - Content
-Tracker** instead of working it out itself, so two plugins that both rank
-notes by recency never disagree. It is a lookup, never a dependency:
-`app.plugins.getPlugin('icor-for-life-content-tracker')` behind the same
-kind of shape guard as `app.setting` and `app.commands`, its
-`getRecent(mode, limit, { under })` called only when it really is a
-function, its answer refused unless it is an array of `TFile`s that the
-store's own `owns()` accepts, and every failure silent, because a member
-without the sibling is the normal case rather than an error. When it
-answers null the plugin sorts the scratchpad folder itself from
-`TFile.stat`, which is what it has always done. Pinned notes are added
-back on top of the tracker's answer, because that answer carries a limit
-and a pin must not fall off the end of it.
-
-## The three process boundaries
+## The two process boundaries
 
 **Renderer to main, this window.** `getRemote()` (remote.ts) is the only
 place `@electron/remote` is obtained for the vault window:
 `window.require('@electron/remote')` first, `window.electron.remote`
-second, cached, null when neither answers. The Tray, the Menu and the
-`globalShortcut` registration are created through it. The Tray's image is
-the one thing NOT built here: remote serializes a NativeImage by value
-and the template flag does not survive, so the Tray gets a path and the
-main process builds the image from it (trayIcon.ts).
+second, cached, null when neither answers. The `globalShortcut`
+registration goes through it.
 
 **Renderer to main, the popout.** `getRemoteFor(win)` takes the remote
 out of the POPOUT's own `require`, because `getCurrentWindow()` answers
 with the window whose require was used. The cached remote above would
 hand back the main window every time.
-
-**Renderer to Node.** `getNode()` in ownerRecord.ts, same shape, for `fs`
-and `path`. Two modules use it and no others; `test/hygiene.test.mjs`
-holds that allowlist.
 
 ## Lifecycle
 
@@ -96,39 +67,34 @@ holds that allowlist.
 onload
   loadData -> normaliseSettings
   NoteStore, ScratchpadWindow
-  addCommand x14 from ACTIONS, registerObsidianProtocolHandler
-  on('editor-change') -> count;  vault.on('rename') -> rekey the pin and the opened time
-  workspace.on('window-close') -> forget the popout
+  addCommand x3 from COMMANDS, each behind checkCallback (off -> not offered)
+  on('editor-change') -> count;  on('window-close') / on('layout-change') -> forget the popout
   getRemote() -> GlobalHotkey, registerDomEvent(window, 'beforeunload')
-  await materialiseTrayIcon() -> <plugin dir>/menubar-iconTemplate.png (+ @2x)
-  ownership.start(userData, vaultPath) -> read the record, watch the directory
   addSettingTab
   onLayoutReady -> adoptRestoredWindow(); applySettings()
 
-applySettings   (load, after every settings change, on an owner-record change)
-  ownership.refresh()
-  owns = settings.ownsMenuBar && ownership.mayOwn
-  chord = owns ? settings.hotkey : ''
-  chord changed?           hotkey.apply(chord): unregister; ok = register; Notice if !ok
-  tray wanted?             no  -> destroyTray()
-                           yes -> exists? rebuildTrayMenu() : ensureTray(trayIconPath)
+applySettings   (load, after every settings change)
+  chord = wantedChord(settings)        '' when the window is off or nothing is recorded
+  chord changed?  hotkey.apply(chord): unregister; ok = register; Notice if !ok
+
+window switched off
+  applySettings() releases the chord; releaseWindow() shows a hidden popout and lets it go
 
 onunload / beforeunload
-  hotkey.release(); destroyTray(); ownership.stop()
-  window.release()   (the popout stays open; it is Obsidian's window)
+  hotkey.release()
+  window.release()   (onunload only; the popout stays open, it is Obsidian's window)
 ```
 
 `beforeunload` exists because "Reload app without saving" (Cmd-R) tears
-the renderer down without `onunload`, and a Tray, a registered chord or
-an `fs.watch` handle in the main process would outlive it.
+the renderer down without `onunload`, and a chord registered in the main
+process would outlive it.
 
 ## The window
 
 `openPopoutLeaf()` returns a leaf; the container is a `WorkspaceWindow`
 with its own `win` and `doc`. Everything that must land before Obsidian's
 deferred `show()` runs synchronously on the next lines: the body class,
-the remembered bounds, `setFullScreenable(false)`,
-`setMaximizable(false)` and the always-on-top level. Then the file is
+the remembered bounds and the always-on-top level. Then the file is
 opened, then the toolbar and the count are mounted.
 
 `test/window.test.mjs` asserts that order as a static read of the source,
@@ -143,90 +109,37 @@ would let every press open another popout.
 Show and hide, never close. `hide()` fires no `beforeunload`, so the
 leaf, the view and the editor state stay alive and the toggle is free.
 Cmd-W is a real close and cannot be intercepted; `window-close` drops the
-reference and the next hotkey opens a fresh window on the same note. On
-relaunch Obsidian restores the popout itself, visible, with a new
-document and no marker of ours on it, so it is recognised structurally
-(a leaf in a `WorkspaceWindow` on a file in the scratchpad folder) and
-hidden.
+reference and the next press opens a fresh window. On relaunch Obsidian
+restores the popout itself, visible, with a new document and no marker of
+ours on it, so it is recognised structurally (a leaf in a
+`WorkspaceWindow` on a note under the daily notes folder) and hidden.
 
-Keys are two listeners on the popout's own document and no key scope at
-all. The first, in the capture phase, matches `KeyboardEvent.code`
-against `ACTIONS` and runs the action; it ignores every key that is not
-in the table and every key pressed inside Obsidian's find bar. The second
-handles Escape through `src/window/escape.ts`: an open find bar closes
-first, a modal or a menu keeps the key second, and only then does the
-window hide. Inside the window a matched chord genuinely shadows whatever
-core binds to it, so `test/actions.test.mjs` holds the 1.13.7 default
-hotkey table and refuses a collision.
-
-A `Scope` was the first design and it failed twice on the same day.
-`Keymap.isMatch` compares against `event.key`, which macOS rewrites under
-Option, so no Option chord could ever fire; and `pushScope` replaces the
-window's single scope pointer while `Scope.handleKey` falls through to
-its PARENT rather than down the stack, so a scope pushed over the editor
-search's own swallowed the keys the search needed. Neither is a bug in
-Obsidian and neither has a workaround inside the Scope API.
+The one key listener is Escape, on the popout's own document, through
+`src/window/escape.ts`: an open find bar closes first, a modal or a menu
+keeps the key second, and only then does the window hide. No key scope is
+pushed: `pushScope` replaces the window's single scope pointer, so a scope
+over the editor search's own swallowed the keys the search needed.
 
 Whether a find bar was open when a key went down is read from a
 `MutationObserver`, not from the DOM. Obsidian's popout event relay sits
 on the WINDOW in the capture phase and is installed by the
-`WorkspaceWindow` constructor, so the Keymap, and therefore the search's
-own Escape, always runs before any listener a plugin can attach; by then
-the container is detached. An observer callback is a microtask, so the
-flag still holds the pre-key state for the whole synchronous dispatch.
+`WorkspaceWindow` constructor, so the search's own Escape always runs
+before any listener a plugin can attach; by then the container is
+detached. An observer callback is a microtask, so the flag still holds
+the pre-key state for the whole synchronous dispatch.
 
 Fullscreen and maximise are allowed. Both clear always-on-top and macOS
 refuses the flag while fullscreen, so it is re-applied from the SETTING
 on `leave-full-screen` and `unmaximize`, and the remembered rectangle is
 never read while the window is expanded. Readable line width is not
 touched at all: Obsidian's own rule is a `max-width` on the editor sizer,
-which does not bind in a narrow window and centres in a wide one, so both
-sizes are correct with no rule and no width class of ours.
-
-"Open in main window" is the one workspace call that must not mean
-"here". `getLeaf('tab')` is `createLeafInTabGroup()`, which asks
-`getMostRecentLeaf()` with no root and therefore searches the root split
-and the popouts together, so the scratchpad's leaf wins;
-`createLeafInParent(rootSplit, -1)` avoids that and makes a split column
-with no tab header. The route is `getMostRecentLeaf(rootSplit)`,
-`setActiveLeaf` on that leaf (which stamps its `activeTime`), then
-`getLeaf('tab')`.
+which does not bind in a narrow window and centres in a wide one.
 
 The window is forgotten on two signals, not one. `window-close` fires
 only when the LAST leaf leaves a popout, so a leaf dragged out of a
 two-tab scratchpad window would leave the plugin driving a window that
 holds someone else's note; `checkLeaf()` on `layout-change` catches
 that.
-
-## The notes
-
-"In the scratchpad" means anywhere UNDER the folder. One rule
-(`NoteStore.owns`), used by the browse list, by the structural
-recognition above and by the delete, so all three cannot disagree.
-
-A new note is filed into `<folder>/<subfolderFormat>` and named from
-`newNoteFormat`, both moment formats, `YYYY/MM` and `YYYYMMDDHHmm` by
-default, the second being what the core Unique note creator writes. Every
-missing folder segment is created in turn, and a collision inside that
-one folder gets " 2". The plugin renames nothing: the inline title is
-shown in the window, and a rename there is Obsidian's own, with its
-validation and its link updating. The browse list carries the note's
-first line as a preview, because a note called 202609091812 is not
-recognisable without one.
-
-## Ownership
-
-One record in Electron's userData folder holds the path of the vault that
-owns the menu bar and the chord. Every vault reads it; only the vault
-whose "Make this vault the owner" button was clicked writes it, to a temp
-file that is then renamed over the target. A vault learns it lost
-ownership from an `fs.watch` on the DIRECTORY (a watcher on the file goes
-deaf after the first rename), and from a re-read on every ownership
-decision and on window focus. A missing or malformed record changes
-nothing.
-
-Obsidian's own `obsidian.json` is read only to list the vaults for the
-settings page, only on a click, and never written.
 
 ## Styling
 
@@ -240,11 +153,11 @@ plugin draws as they paint Obsidian's own.
 
 ## Tests
 
-`npm test` bundles the pure surface (`test/entry.ts`: the action table,
-the accelerator, naming, meta, plain text, the settings model, the
-ownership shapes) and runs it under `node:test`. The rest read the repo as
-text: `hygiene` pins the forbidden surfaces, the Node allowlist and the
-stylesheet rules; `manifest` pins identity and the command table;
-`window` pins the popout's call order; `ownership` pins every finding from
-Vex's review by id. Nothing here runs Obsidian or Electron; the live
-checks are listed in the release notes.
+`npm test` bundles the pure surface (`test/entry.ts`: the commands, the
+accelerator, naming, the daily and scratch paths, the count, Escape, the
+settings model) and runs it under `node:test`. The rest read the repo as
+text: `hygiene` pins the forbidden surfaces and the stylesheet rules;
+`manifest` pins identity and the commands; `window` pins the popout's call
+order; `slim` pins what 0.3.0 removed and the two decisions it added (what
+the shortcut opens, and no shortcut while the window is off). Nothing here
+runs Obsidian or Electron.
