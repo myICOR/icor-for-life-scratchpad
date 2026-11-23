@@ -1,4 +1,4 @@
-# ICOR for Life - Scratchpad
+# ICOR Scratchpad
 
 **Catch a thought without losing what you were doing.**
 

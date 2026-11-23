@@ -1,6 +1,6 @@
 # Security Policy
 
-ICOR for Life - Scratchpad holds one system-wide keyboard shortcut, opens
+ICOR Scratchpad holds one system-wide keyboard shortcut, opens
 one extra Obsidian window, and creates empty notes in your daily notes
 folder. To do the first two it reaches into Obsidian's Electron main
 process through `@electron/remote`, which Obsidian itself enables on every

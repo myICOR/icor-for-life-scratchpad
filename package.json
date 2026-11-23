@@ -1,6 +1,6 @@
 {
   "name": "icor-for-life-scratchpad",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "description": "ICOR for Life - Scratchpad - a floating note window behind a global shortcut, opening today's daily note or a new scratch note.",
   "license": "MIT",

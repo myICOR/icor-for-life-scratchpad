@@ -1,5 +1,5 @@
 export const PLUGIN_ID = 'icor-for-life-scratchpad';
-export const PLUGIN_NAME = 'ICOR for Life - Scratchpad';
+export const PLUGIN_NAME = 'ICOR Scratchpad';
 /* Every DOM class this plugin ever adds starts with this. */
 export const CLASS_PREFIX = 'icor-scr-';
 /* The body class on the popout's own document. It must never appear on the

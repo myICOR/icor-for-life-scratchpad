@@ -4,6 +4,11 @@ All notable changes to ICOR for Life - Scratchpad.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.3.1] - 2026-11-23
+
+### Changed
+- The display name is now ICOR Scratchpad (it was ICOR for Life - Scratchpad). The plugin id stays `icor-for-life-scratchpad`, so installed vaults, settings and hotkeys carry on unchanged.
+
 ## [0.3.0] - 2026-11-23
 
 The slim release. The scratchpad keeps its floating window and the shortcut

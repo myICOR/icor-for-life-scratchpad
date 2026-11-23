@@ -1,4 +1,4 @@
-/* ICOR for Life - Scratchpad. A floating note window and a system-wide
+/* ICOR Scratchpad. A floating note window and a system-wide
  * shortcut the member records themselves: pressing it brings the window
  * forward, pressing it again puts it away. The window opens today's daily
  * note or a new scratch note beside it, whichever the member chose, and one

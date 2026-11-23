@@ -61,7 +61,7 @@ test('the description is what the directory accepts', () => {
   assert.match(manifest.description, /\.$/, 'ends with a full stop');
   assert.doesNotMatch(manifest.description, /^(This|A plugin|An Obsidian plugin)/);
   assert.match(manifest.description, /ICOR for Life/);
-  assert.equal(manifest.name, 'ICOR for Life - Scratchpad');
+  assert.equal(manifest.name, 'ICOR Scratchpad');
   assert.equal(manifest.id, 'icor-for-life-scratchpad');
   /* obsidianmd/validate-manifest: the charset and the two forbidden
      words, on the three fields the scanner reads. A colon is outside the

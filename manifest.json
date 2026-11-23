@@ -1,7 +1,7 @@
 {
   "id": "icor-for-life-scratchpad",
-  "name": "ICOR for Life - Scratchpad",
-  "version": "0.3.0",
+  "name": "ICOR Scratchpad",
+  "version": "0.3.1",
   "minAppVersion": "1.13.0",
   "description": "A floating scratchpad window behind a system-wide shortcut you pick yourself. It opens today's daily note or a new scratch note, and you can switch it off. Part of the ICOR for Life suite.",
   "author": "myICOR",
