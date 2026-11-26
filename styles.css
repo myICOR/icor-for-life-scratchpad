@@ -8,8 +8,8 @@
  * not, skins the few controls it draws.
  *
  * Every selector is either under body.icor-scr-window (the popout's own
- * document, so nothing here can reach the main window) or under
- * .icor-scr-modal (the two suggest modals). */
+ * document, so nothing here can reach the main window) or one of the
+ * plugin's own icor-scr- classes on its settings page. */
 
 /* ---- the popout's chrome ------------------------------------------- */
 
@@ -177,14 +177,6 @@ body.icor-scr-window .icor-scr-tool:focus-visible {
   box-shadow: 0 0 0 var(--size-2-1) var(--background-modifier-border-focus);
 }
 
-/* Always-on-top is signalled by one glyph state and by nothing else: no
-   border change, no window tint, no badge, no toast. This is the window's
-   one marker moment, which is exactly why it is legible at a glance. */
-body.icor-scr-window .icor-scr-tool-on {
-  color: var(--text-accent);
-  background-color: var(--background-modifier-active-hover);
-}
-
 /* ---- the count line ------------------------------------------------ */
 
 /* No ground, no border, no separator rule above it. It renders at zero too,
@@ -203,161 +195,6 @@ body.icor-scr-window .icor-scr-count {
   color: var(--text-faint);
   font-family: var(--font-interface);
   font-size: var(--font-ui-smaller);
-}
-
-/* ---- the two suggest modals ---------------------------------------- */
-
-/* The modal's own chrome stays the host's in every theme. What is added is
-   the row layout, the shortcut chips, the group label and the row actions,
-   and nothing else. */
-.icor-scr-modal .icor-scr-row {
-  display: flex;
-  align-items: center;
-  gap: var(--size-4-2);
-  flex-wrap: wrap;
-}
-
-.icor-scr-modal .icor-scr-row-main {
-  display: flex;
-  align-items: center;
-  gap: var(--size-4-2);
-  flex: 1;
-  min-width: 0;
-}
-
-.icor-scr-modal .icor-scr-row-icon {
-  display: flex;
-  align-items: center;
-  color: var(--text-muted);
-}
-
-.icor-scr-modal .icor-scr-row-text {
-  min-width: 0;
-}
-
-/* One line, ellipsis, never a fade. */
-.icor-scr-modal .icor-scr-row-title {
-  color: var(--text-normal);
-  font-size: var(--font-ui-medium);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.icor-scr-modal .icor-scr-row-meta {
-  display: flex;
-  align-items: center;
-  gap: var(--size-2-1);
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-}
-
-/* The sort toggle, between the search field and the results. Two buttons
-   that read as one control: the group carries the ground and the radius,
-   the buttons carry only their own state, and the selected one takes the
-   host's own selected-row treatment rather than a colour of its own. */
-.icor-scr-modal .icor-scr-sortbar {
-  display: flex;
-  align-items: center;
-  gap: var(--size-2-1);
-  margin: var(--size-2-2) var(--size-4-3);
-  padding: var(--size-2-1);
-  background-color: var(--background-modifier-form-field);
-  border-radius: var(--radius-s);
-  width: fit-content;
-}
-
-/* The unselected buttons take the bar's own ground rather than a
-   transparent one: the stylesheet may only name Obsidian variables, and
-   the same variable IS the see-through look here. */
-.icor-scr-modal .icor-scr-sort {
-  background-color: var(--background-modifier-form-field);
-  box-shadow: none;
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-  padding: var(--size-2-1) var(--size-4-2);
-  border-radius: var(--radius-s);
-}
-
-.icor-scr-modal .icor-scr-sort:hover {
-  color: var(--text-normal);
-}
-
-.icor-scr-modal .icor-scr-sort-on {
-  background-color: var(--background-primary);
-  color: var(--text-normal);
-}
-
-/* The browse modal's one marker moment. */
-.icor-scr-modal .icor-scr-dot {
-  width: var(--size-2-2);
-  height: var(--size-2-2);
-  border-radius: var(--radius-l);
-  background-color: var(--text-accent);
-}
-
-/* The group heading sits inside the first row of its group, above its
-   title, because FuzzySuggestModal has no non-selectable row. */
-.icor-scr-modal .icor-scr-group {
-  flex-basis: 100%;
-  color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
-  padding-bottom: var(--size-2-2);
-}
-
-.icor-scr-modal .icor-scr-keys {
-  display: flex;
-  align-items: center;
-  gap: var(--size-2-1);
-  margin-left: auto;
-}
-
-.icor-scr-modal .icor-scr-key {
-  background-color: var(--background-secondary-alt);
-  color: var(--text-muted);
-  border-radius: var(--radius-s);
-  padding: var(--size-2-1) var(--size-2-2);
-  min-width: var(--size-4-4);
-  font-family: var(--font-interface);
-  font-size: var(--font-ui-smaller);
-  text-align: center;
-}
-
-/* Revealed on hover, on focus-within, AND on the selected row: a
-   hover-only affordance is unreachable from the keyboard, and this modal is
-   driven by the keyboard first. */
-.icor-scr-modal .icor-scr-row-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--size-2-1);
-  margin-left: auto;
-  visibility: hidden;
-}
-
-.icor-scr-modal .icor-scr-row:hover .icor-scr-row-actions,
-.icor-scr-modal .icor-scr-row:focus-within .icor-scr-row-actions,
-.icor-scr-modal .is-selected .icor-scr-row-actions {
-  visibility: visible;
-}
-
-.icor-scr-modal .icor-scr-row-action {
-  color: var(--text-muted);
-}
-
-.icor-scr-modal .icor-scr-row-action:hover {
-  color: var(--text-normal);
-}
-
-.icor-scr-modal .icor-scr-row-action-danger:hover {
-  color: var(--text-error);
-}
-
-/* ---- the undo in the delete notice --------------------------------- */
-
-.icor-scr-undo {
-  color: var(--text-accent);
-  cursor: pointer;
-  text-decoration: underline;
 }
 
 /* ---- the settings page --------------------------------------------- */
@@ -383,41 +220,4 @@ body.icor-scr-window .icor-scr-count {
 .icor-scr-recording {
   color: var(--text-accent);
   border-color: var(--text-accent);
-}
-
-.icor-scr-vaults {
-  display: flex;
-  flex-direction: column;
-  gap: var(--size-2-2);
-}
-
-.icor-scr-warn {
-  color: var(--text-warning);
-  font-size: var(--font-ui-small);
-}
-
-.icor-scr-vault-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--size-2-1);
-}
-
-.icor-scr-vault-row {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--size-4-2);
-  font-size: var(--font-ui-small);
-}
-
-.icor-scr-vault-name {
-  color: var(--text-normal);
-}
-
-.icor-scr-vault-mark {
-  color: var(--text-muted);
-}
-
-.icor-scr-vault-note {
-  color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
 }

@@ -1,5 +1,5 @@
 /* Bundles test/entry.ts (or a mutant copy of it) into an ES module that
- * node:test can import. Shared by test/build.mjs and test/mutate.mjs. */
+ * node:test can import. Used by test/build.mjs. */
 import esbuild from 'esbuild';
 import { resolve } from 'node:path';
 

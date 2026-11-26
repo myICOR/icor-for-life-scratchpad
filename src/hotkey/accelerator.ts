@@ -141,7 +141,7 @@ export function chordFromEvent(e: ChordEvent, isMac: boolean): string | null {
    system. */
 export function validateAccelerator(chord: string): string | null {
   const parts = chord.split('+');
-  if (chord.trim() === '' || parts.some((p) => p === '')) return 'Write the hotkey as modifiers and one key joined by "+", for example Shift+CommandOrControl+F.';
+  if (chord.trim() === '' || parts.some((p) => p === '')) return 'Write the shortcut as modifiers and one key joined by "+", for example Shift+CommandOrControl+F.';
   const mods: string[] = [];
   const keys: string[] = [];
   for (const raw of parts) {
@@ -156,9 +156,9 @@ export function validateAccelerator(chord: string): string | null {
       return `"${part}" is not a key Electron knows.`;
     }
   }
-  if (keys.length === 0) return 'The hotkey needs a key after the modifiers.';
-  if (keys.length > 1) return 'The hotkey can hold one key only.';
-  if (mods.length === 0) return 'The hotkey needs at least one modifier, or it would take that key away from every application.';
+  if (keys.length === 0) return 'The shortcut needs a key after the modifiers.';
+  if (keys.length > 1) return 'The shortcut can hold one key only.';
+  if (mods.length === 0) return 'The shortcut needs at least one modifier, or it would take that key away from every application.';
   return null;
 }
 

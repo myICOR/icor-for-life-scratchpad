@@ -56,7 +56,6 @@ test('isOpen is keyed on the window, so a host with no remote cannot open a seco
      another one, and another (Flint H-1). */
   assert.match(src, /get isOpen\(\): boolean \{\s*return this\.wsWin !== null;\s*\}/, 'isOpen reads the window, not its BrowserWindow');
   assert.doesNotMatch(src, /get isOpen\(\): boolean \{\s*return this\.bw !== null;/, 'bw is null on a host with no remote');
-  assert.match(src, /get isDriveable\(\): boolean \{\s*return this\.bw !== null;\s*\}/, 'the remote question has its own name');
   /* And the guard that stops the second window is the one that reads it. */
   const open = src.slice(src.indexOf('  async open(file: TFile)'));
   assert.match(open.slice(0, 200), /if \(this\.isOpen\) \{/, 'open() short-circuits on isOpen');
@@ -71,12 +70,14 @@ test('a leaf that leaves the popout without closing it is noticed', () => {
   assert.match(src, /if \(container === wsWin\) return true;/);
   const check = src.slice(src.indexOf('checkLeaf(): boolean'));
   const body = check.slice(0, check.indexOf('\n  }'));
-  assert.match(body, /this\.release\(\);[\s\S]*this\.cb\.onClosed\(\);/, 'the same teardown as forget');
+  assert.match(body, /this\.release\(\);\s*return false;/, 'the same teardown as forget');
   assert.match(strip(read('src/main.ts')), /workspace\.on\('layout-change', \(\) => this\.window\.checkLeaf\(\)\)/);
 });
 
 test('the toggle hides, it never closes, and Cmd-W stays a real close', () => {
-  assert.match(src, /if \(bw\.isVisible\(\) && bw\.isFocused\(\)\) this\.hide\(\);\s*else this\.show\(\);/);
+  assert.match(src, /return this\.bw !== null && this\.bw\.isVisible\(\) && this\.bw\.isFocused\(\);/, 'frontmost is visible and focused');
+  const main = strip(read('src/main.ts'));
+  assert.match(main, /if \(this\.window\.isOpen && this\.window\.isFrontmost\) \{\s*this\.window\.hide\(\);\s*return;\s*\}\s*await this\.showWindow\(\);/, 'pressed in front, it goes away; otherwise it comes forward');
   assert.match(src, /this\.bw\?\.hide\(\)/, 'hide fires no beforeunload, so the leaf and the editor state stay alive');
   assert.doesNotMatch(src, /bw\.destroy\(\)|bw\.close\(\)|leaf\.detach\(\)/, 'a plugin never closes the member window');
   /* window-close is the only place the window is forgotten. */
@@ -125,17 +126,13 @@ test('whether a search was open is read from an observer, never from the DOM at 
   assert.match(src, /const Observer = \(wsWin\.win as unknown as \{ MutationObserver/, "the popout's own constructor");
 });
 
-test('the chords are one capture listener matching the table, and no key scope is pushed at all', () => {
-  /* Obsidian's Scope matches on event.key, which macOS Option rewrites, so
-     no Option chord could fire; and a pushed scope replaces the window's
-     single scope pointer, so the editor search underneath it lost Enter and
-     the arrows (Tom's live test, defects 2 and 5). */
+test('Escape is the only key the window listens for, and no key scope is pushed at all', () => {
+  /* A pushed scope replaces the window's single scope pointer, so the
+     editor search underneath it lost Enter and the arrows (Tom's live test,
+     defect 5). The in-window chords of 0.2 went with the actions they ran;
+     a member binds the three commands in Obsidian's own hotkeys page. */
   assert.doesNotMatch(src, /pushScope|popScope|new Scope\(/, 'the Scope route is gone, not disabled');
-  assert.match(src, /wsWin\.doc\.addEventListener\('keydown', onChord, \{ capture: true \}\)/);
-  assert.match(src, /const action = matchChord\(evt, Platform\.isMacOS\)/, 'one table, one matcher');
-  assert.match(src, /if \(evt\.defaultPrevented \|\| inside\(evt\.target, SEARCH\) \|\| inside\(evt\.target, OVERLAYS\)\) return;/, 'the find bar and any open palette keep every key');
-  const chord = src.slice(src.indexOf('const onChord ='));
-  assert.match(chord.slice(0, 500), /evt\.preventDefault\(\);\s*evt\.stopPropagation\(\);/);
+  assert.deepEqual([...src.matchAll(/addEventListener\('keydown', (\w+)/g)].map((m) => m[1]), ['onEscape']);
 });
 
 test('always on top is restored from the SETTING when the window leaves fullscreen or unmaximizes', () => {
@@ -146,9 +143,6 @@ test('always on top is restored from the SETTING when the window leaves fullscre
   for (const event of ['leave-full-screen', 'unmaximize']) {
     assert.match(src, new RegExp(`bw\\.on\\('${event}', onRestored\\)`), `${event} restores the flag`);
     assert.match(src, new RegExp(`bw\\.removeListener\\('${event}', onRestored\\)`), `${event} is released`);
-  }
-  for (const event of ['enter-full-screen', 'maximize']) {
-    assert.match(src, new RegExp(`bw\\.on\\('${event}', onTopChanged\\)`), `${event} only repaints the glyph`);
   }
   assert.match(src, /if \(bw && !bw\.isFullScreen\(\)\) bw\.setAlwaysOnTop\(on, 'floating'\)/, 'never fought while fullscreen');
 });
@@ -161,24 +155,13 @@ test('a fullscreen or maximized rectangle is never saved as the window position'
   assert.ok(guard >= 0 && read >= 0 && guard < read, 'the guard runs before the rectangle is read');
 });
 
-test('a modal is opened only after the popout really has focus', () => {
-  assert.match(src, /async whenFocused\(\): Promise<void>/);
-  assert.match(src, /if \(wsWin\.doc\.hasFocus\(\)\) return;/);
-  const main = strip(read('src/main.ts'));
-  for (const opener of ['openActions', 'openBrowse']) {
-    const body = main.slice(main.indexOf(`private async ${opener}(`));
-    const block = body.slice(0, body.indexOf('\n  }'));
-    assert.match(block, /await this\.window\.whenFocused\(\)/, `${opener} waits for focus before it opens a modal`);
-  }
-});
-
 test('the restored popout is recognised structurally and hidden, because no marker survives a relaunch', () => {
   const main = strip(read('src/main.ts'));
-  const body = main.slice(main.indexOf('private adoptRestoredWindow()'));
+  const body = main.slice(main.indexOf('private async adoptRestoredWindow()'));
   const block = body.slice(0, body.indexOf('\n  }\n'));
   assert.match(block, /iterateAllLeaves/);
   assert.match(block, /instanceof WorkspaceWindow/);
-  assert.match(block, /view instanceof MarkdownView && this\.notes\.owns\(view\.file\)/);
+  assert.match(block, /view instanceof MarkdownView && view\.file && isUnder\(view\.file\.path, folder\)/);
   assert.match(block, /this\.window\.adopt\(found\)\) this\.window\.hide\(\)/);
 });
 
@@ -195,123 +178,19 @@ test('the count is debounced and scoped to the window own view, and nothing rena
   assert.doesNotMatch(read('styles.css'), /\.inline-title \{\s*display: none/, 'the inline title is the rename surface');
 });
 
-test('open in main window opens a real tab in the main window own tab group', () => {
-  /* Two roots, both read out of the 1.13.7 bundle. getLeaf('tab') is
-     createLeafInTabGroup(), which calls getMostRecentLeaf() with NO root
-     and therefore searches rootSplit AND floatingSplit together, so the
-     scratchpad's own leaf won and the note opened in the popout (Tom,
-     defect 3). createLeafInParent(rootSplit, -1) then put the leaf in the
-     root split itself, which is a split column with no tab header and no
-     close button (defect 9). Naming the root on getMostRecentLeaf, then
-     making that leaf active, is what points the tab call at the main
-     window. */
+test('a note opens with the caret in the body, past the end, not in the inline title', () => {
   const main = strip(read('src/main.ts'));
-  const body = main.slice(main.indexOf('private newTabInMainWindow('));
+  const body = main.slice(main.indexOf('private async openInWindow('));
   const block = body.slice(0, body.indexOf('\n  }'));
-  assert.match(block, /workspace\.getMostRecentLeaf\(workspace\.rootSplit\)/, 'the root is named, or the popout leaf wins');
-  const active = block.indexOf('workspace.setActiveLeaf(inRoot, { focus: false })');
-  const tab = block.indexOf("workspace.getLeaf('tab')");
-  assert.ok(active >= 0 && tab >= 0 && active < tab, 'the root leaf is made active BEFORE the tab is asked for');
-  assert.match(block, /focus: false/, 'the main window is not raised before the note is in it');
-  /* createLeafInParent survives only as the empty-main-window fallback,
-     never on the path a running vault takes. */
-  assert.equal([...main.matchAll(/createLeafInParent/g)].length, 1, 'exactly one, and it is the fallback');
-  assert.ok(block.indexOf('createLeafInParent') > tab, 'the fallback is below the tab route, not on it');
-  assert.match(block, /if \(inRoot\) \{[\s\S]*return workspace\.getLeaf\('tab'\);\s*\}/, 'the fallback is only reached when the main window holds no leaf');
-});
-
-test('open in main window reveals a note that is already open there, and puts the scratchpad away', () => {
-  const main = strip(read('src/main.ts'));
-  const body = main.slice(main.indexOf('private async openInMainWindow('));
-  const block = body.slice(0, body.indexOf('\n  }'));
-  assert.match(block, /leaf\.getContainer\(\) instanceof WorkspaceWindow\) return;/, 'a popout leaf is not the main window');
-  assert.match(block, /const leaf = found \?\? this\.newTabInMainWindow\(\)/);
-  assert.match(block, /if \(!found\) await leaf\.openFile\(file, \{ active: true \}\)/, 'a note already open is revealed, not opened twice');
-  const active = block.indexOf('workspace.setActiveLeaf(leaf, { focus: true })');
-  const reveal = block.indexOf('await workspace.revealLeaf(leaf)');
-  const forward = block.indexOf('bringWindowForward(this.remote)');
-  const hide = block.indexOf('this.window.hide()');
-  assert.ok(active >= 0 && reveal >= 0 && forward >= 0 && hide >= 0, 'all four steps are there');
-  assert.ok(active < reveal && reveal < forward && forward < hide, 'focus the leaf, reveal it, raise the window, then put the scratchpad away');
-  assert.match(block, /if \(!this\.settings\.alwaysOnTop\) this\.window\.hide\(\)/, 'a pinned window stays');
-});
-
-test('a new note opens with the caret in the body, not in the inline title', () => {
-  const main = strip(read('src/main.ts'));
-  const block = main.slice(main.indexOf('case ACTION_NEW_NOTE'), main.indexOf('case ACTION_DUPLICATE_NOTE'));
   assert.match(block, /this\.window\.focusEditor\(true\)/);
   assert.match(src, /focusEditor\(toEnd = false\): void/);
   assert.match(src, /view\.editor\.setCursor\(\{ line: last, ch: view\.editor\.getLine\(last\)\.length \}\)/);
 });
 
-test('the delete is the host trash with an undo, and never a confirm dialog', () => {
-  const store = strip(read('src/notes/store.ts'));
-  assert.match(store, /this\.app\.fileManager\.trashFile\(file\)/, "the member's own trash setting decides");
-  assert.match(store, /text: 'Undo'/);
-  assert.doesNotMatch(store, /confirm|promptForDeletion/, 'a confirm on a reversible action trains the member to click through dialogs');
-});
-
-test('the plus opens a menu mounted in the popout own document, with the three items and their icons', () => {
-  /* Menu.showAtPosition falls back to `activeDocument` when no document is
-     given, and activeWindow only moves on a real DOM focus event, so a menu
-     opened without naming the document can land in the main window (the
-     same trap the modals wait on whenFocused for). Naming the anchor's own
-     document settles it for both menu paths: the DOM menu appends to
-     doc.body and the native one pops on doc.win's own BrowserWindow. */
-  const menu = strip(read('src/window/newMenu.ts'));
-  assert.match(menu, /menu\.showAtPosition\(\{[^}]*\}, anchor\.doc\)/, 'the popout own document is named');
-  assert.doesNotMatch(menu, /activeDocument|activeWindow|\bdocument\b/, 'never the ambient document');
-  assert.match(menu, /for \(const action of NEW_MENU_ACTIONS\)/, 'one table behind the menu, the palette and the commands');
-  assert.match(menu, /item\.setIcon\(action\.icon\)/);
-  assert.match(menu, /menu\.setUseNativeMenu\(false\)/, 'a native menu carries no icons');
-  /* It hangs off the button's rectangle, right-aligned, because the pill
-     sits in the top right corner. */
-  assert.match(menu, /const rect = anchor\.getBoundingClientRect\(\)/);
-  assert.match(menu, /x: rect\.x, y: rect\.bottom, width: rect\.width, overlap: true, left: true/);
-});
-
-test('the toolbar hands its own element to the action that opens a menu on it', () => {
+test('the toolbar is the two switches from the one command list, and nothing else', () => {
   const chrome = strip(read('src/window/chrome.ts'));
-  assert.match(chrome, /onAction\(button\.action, el\)/, 'the button passes itself');
-  assert.match(chrome, /if \(button\.opensMenu\) el\.setAttribute\('aria-haspopup', 'menu'\)/, 'a screen reader is told it opens something');
-  assert.match(chrome, /action: TOOL_NEW_MENU, icon: 'lucide-plus'/, 'the plus is the one that opens it');
-  assert.match(src, /mountChrome\(wsWin\.doc, \(action, anchor\) => this\.cb\.runAction\(action, anchor\)\)/);
-  /* And the branch that draws the menu cannot be reached without one: it is
-     not a command, so nothing but the toolbar dispatches it. */
-  const main = strip(read('src/main.ts'));
-  assert.match(main, /case TOOL_NEW_MENU:[\s\S]*?if \(anchor\) openNewMenu\(anchor, \(id\) => void this\.runAction\(id\)\);/);
-});
-
-test('the subject note puts the caret in the inline title, and falls back to the body when it is hidden', () => {
-  const main = strip(read('src/main.ts'));
-  const block = main.slice(main.indexOf('case ACTION_SUBJECT_NOTE'), main.indexOf('case ACTION_DUPLICATE_NOTE'));
-  assert.match(block, /await this\.notes\.subjectNote\(\)/);
-  assert.match(block, /if \(!this\.window\.focusInlineTitle\(\)\) this\.window\.focusEditor\(true\)/, 'a note that was created still has to be typeable');
-  /* The selection is built in the element's OWN realm: a popout is a
-     separate document and the global one here is always the main window's. */
-  const body = src.slice(src.indexOf('focusInlineTitle(): boolean {'));
-  const fn = body.slice(0, body.indexOf('\n  }'));
-  assert.match(fn, /view\?\.contentEl\.querySelector<HTMLElement>\('\.inline-title'\)/);
-  assert.match(fn, /title\.win\.getSelection\(\)/);
-  assert.match(fn, /title\.doc\.createRange\(\)/);
-  assert.match(fn, /range\.selectNodeContents\(title\)/, 'the name is selected, so the first keystroke replaces it');
-  assert.doesNotMatch(fn, /\bwindow\.|\bdocument\./, 'never the main window realm');
-});
-
-test('the daily note and the unique note both open what is already there', () => {
-  const main = strip(read('src/main.ts'));
-  for (const [action, maker] of [['ACTION_NEW_NOTE', 'uniqueNote'], ['ACTION_DAILY_NOTE', 'dailyNote']]) {
-    const block = main.slice(main.indexOf(`case ${action}`));
-    assert.match(block.slice(0, 400), new RegExp(`await this\\.notes\\.${maker}\\(\\)`), `${action} calls ${maker}`);
-  }
-  /* The unique note does NOT number a collision any more; the store's
-     resolveName decides, and only the content-carrying create() numbers. */
-  const store = strip(read('src/notes/store.ts'));
-  const unique = store.slice(store.indexOf('async uniqueNote('));
-  const block = unique.slice(0, unique.indexOf('\n  }'));
-  assert.match(block, /resolveName\(wanted, this\.takenIn\(folder\), 'open'\)/);
-  assert.match(block, /if \(resolved\.existing\) \{[\s\S]*?if \(found instanceof TFile\) return found;/);
-  assert.doesNotMatch(block, /uniqueName\(/, 'the " 2" suffix is gone from this path');
-  const subject = store.slice(store.indexOf('async subjectNote('));
-  assert.match(subject.slice(0, subject.indexOf('\n  }')), /resolveName\(UNTITLED, this\.takenIn\(folder\), 'number'\)/);
+  assert.match(chrome, /for \(const command of TOOLBAR_COMMANDS\)/, 'one list behind the buttons and the commands');
+  assert.match(chrome, /onCommand\(command\.id\)/);
+  assert.doesNotMatch(chrome, /anchor|aria-pressed|aria-haspopup/, 'no always-on-top glyph and no menu');
+  assert.match(src, /mountChrome\(wsWin\.doc, \(id\) => this\.cb\.runCommand\(id\)\)/);
 });

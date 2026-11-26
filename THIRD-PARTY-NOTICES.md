@@ -9,10 +9,8 @@ bundle requires exactly `obsidian` and carries no `node_modules` path.
 
 ## Icons
 
-The command icons are Lucide names resolved through Obsidian's own icon
-API at runtime. The menu bar icon is our own, `assets/menubar-icon.png`
-and its 2x, drawn for this plugin and embedded into `main.js` at build
-time as two data URLs (about 1.5 KB). No third-party icon is bundled.
+The command and toolbar icons are Lucide names resolved through Obsidian's
+own icon API at runtime. No icon is bundled.
 
 ## Development dependencies
 

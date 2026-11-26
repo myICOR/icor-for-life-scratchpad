@@ -11,13 +11,12 @@
  * The surface is typed as the narrow slice this plugin uses, against the
  * `electron` type package, rather than as the whole of @electron/remote:
  * SECURITY.md lists exactly these members. */
-import type { App as ElectronApp, BrowserWindow, GlobalShortcut, Menu, Tray } from 'electron';
+import type { App as ElectronApp, BrowserWindow, GlobalShortcut } from 'electron';
 
 export interface RemoteApi {
   readonly globalShortcut: GlobalShortcut;
+  /* For app.focus only. */
   readonly app: ElectronApp;
-  readonly Tray: typeof Tray;
-  readonly Menu: typeof Menu;
   getCurrentWindow(): BrowserWindow;
 }
 
@@ -31,7 +30,7 @@ let cached: RemoteApi | null | undefined;
 function looksLikeRemote(v: unknown): v is RemoteApi {
   if (!v || typeof v !== 'object') return false;
   const r = v as Record<string, unknown>;
-  return typeof r.getCurrentWindow === 'function' && typeof r.globalShortcut === 'object' && typeof r.Tray === 'function' && typeof r.Menu === 'function' && typeof r.app === 'object';
+  return typeof r.getCurrentWindow === 'function' && typeof r.globalShortcut === 'object' && typeof r.app === 'object';
 }
 
 /* One attempt through `require`, one through the window global, then
@@ -73,9 +72,9 @@ export function getRemoteFor(win: Window): RemoteApi | null {
 }
 
 /* Brings a window in front of whatever app the member was in. A global
-   hotkey fires while another application is active, and obsidian:// to an
-   open vault does not raise the window by itself, so every trigger from
-   outside goes through here. `show()` un-minimises and surfaces the window;
+   shortcut fires while another application is active, and showing a window
+   does not make Obsidian the active app by itself, so every show goes
+   through here. `show()` un-minimises and surfaces the window;
    `app.focus` with `steal` makes Obsidian the active app on macOS (the flag
    is ignored elsewhere). */
 export function bringForward(remote: RemoteApi, win: BrowserWindow): void {
@@ -83,8 +82,4 @@ export function bringForward(remote: RemoteApi, win: BrowserWindow): void {
   win.show();
   remote.app.focus({ steal: true });
   win.focus();
-}
-
-export function bringWindowForward(remote: RemoteApi): void {
-  bringForward(remote, remote.getCurrentWindow());
 }

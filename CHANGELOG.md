@@ -4,6 +4,51 @@ All notable changes to ICOR for Life - Scratchpad.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.3.1] - 2026-11-23
+
+### Changed
+- The display name is now ICOR Scratchpad (it was ICOR for Life - Scratchpad). The plugin id stays `icor-for-life-scratchpad`, so installed vaults, settings and hotkeys carry on unchanged.
+
+## [0.3.0] - 2026-11-23
+
+The slim release. The scratchpad keeps its floating window and the shortcut
+you record, and drops everything else (Tom: "remove the bloat but keep the
+simple floating window with shortcut").
+
+### Added
+- A **Floating window** setting that turns the window and the shortcut off
+  together. Off, the plugin registers no system-wide shortcut and opens no
+  window, and its commands are not offered.
+- **The shortcut opens**: today's daily note (the default), where Obsidian's
+  own Daily notes settings keep it, or a new scratch note in the same
+  folder, named from the minute (`YYYYMMDDHHmm`). Brought back the same day,
+  the window shows what you left in it; on a new day it opens your choice
+  again. Scratch notes stay where they are: nothing marks them processed and
+  nothing moves them.
+- Two small buttons at the top of the window, **Today's daily note** and
+  **New scratch note**, and three commands: show or hide the scratchpad,
+  open today's daily note in it, new scratch note in it. The command ids are
+  the ones 0.2 used, so a hotkey you bound to one keeps working.
+
+### Removed
+- The menu bar icon (system tray on Windows and Linux) and its images.
+- The vault ownership record, the reading of Obsidian's vault list, and with
+  them every file this plugin touched outside your vault.
+- The `obsidian://icor-scratchpad` link.
+- The actions palette and its rows (subject note, duplicate, pin, find in
+  note, copy as Markdown or plain text, open in main window, delete), the
+  browse list with its pins and sort, the in-window chords, and the
+  always-on-top button in the window. Always on top stays as a setting.
+- The scratchpad folder, subfolder and name settings: a scratch note goes
+  beside today's daily note.
+- The three reaches past the public API (`app.setting`, `app.commands`,
+  `app.plugins`) and the two modules allowed to use Node's `fs`.
+
+### Changed
+- "Hotkey" is called "shortcut" everywhere you read it.
+- A 0.2 `data.json` keeps your recorded shortcut, always on top and the
+  window position; the settings of the removed parts are dropped.
+
 ## [0.2.0] - 2026-09-21
 
 ### Changed
